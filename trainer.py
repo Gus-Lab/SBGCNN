@@ -5,6 +5,9 @@ from tqdm import tqdm, tqdm_notebook
 from sklearn.model_selection import KFold
 from tensorboardX import SummaryWriter
 from torch.utils.data import DataLoader
+import numpy as np
+import os.path as osp
+from utils import get_model_log_dir
 
 
 def train_cross_validation(model_cls, dataset, dropout=0, lr=1e-3,
@@ -22,7 +25,7 @@ def train_cross_validation(model_cls, dataset, dropout=0, lr=1e-3,
     sample_data = dataset.datas[0]
     device = torch.device('cuda' if torch.cuda.is_available() and use_gpu else 'cpu')
 
-    criterion = nn.NLLLoss()
+    criterion = nn.CrossEntropyLoss()
 
     device_count = torch.cuda.device_count() if multi_gpus else 1
     if device_count > 1:
@@ -31,9 +34,11 @@ def train_cross_validation(model_cls, dataset, dropout=0, lr=1e-3,
     dataloader = DataLoader(dataset, shuffle=True, batch_size=device_count)
 
     print("Training {0} {1} models...".format(n_splits, model_name))
+
+    log_dir_base = get_model_log_dir(comment, model_name)
     if tb_service_loc is not None:
-        print("TensorBoard available at http://{2}/#scalars&regexInput={0}_{1}".format(
-            comment, model_name, tb_service_loc))
+        print("TensorBoard available at http://{1}/#scalars&regexInput={0}".format(
+            log_dir_base, tb_service_loc))
     else:
         print("Please set up TensorBoard")
 
@@ -47,7 +52,9 @@ def train_cross_validation(model_cls, dataset, dropout=0, lr=1e-3,
             print(model)
         optimizer = torch.optim.Adam(model.parameters(), lr=lr, betas=(0.9, 0.999),
                                      eps=1e-08, weight_decay=weight_decay, amsgrad=False)
-        writer = SummaryWriter(comment='_{0}_{1}{2}'.format(comment, model_name, fold))
+        writer = SummaryWriter(log_dir=osp.join('runs', log_dir_base+str(fold)))
+        # add_graph is buggy, who want to fix it?
+        # writer.add_graph(model, input_to_model=dataset.__getitem__(0), verbose=True)
 
         if multi_gpus and use_gpu:
             model = nn.DataParallel(model).to(device)
@@ -66,6 +73,7 @@ def train_cross_validation(model_cls, dataset, dropout=0, lr=1e-3,
 
                 running_loss = 0.0
                 running_corrects = 0
+                epoch_yhat_0, epoch_yhat_1 = np.array([]), np.array([])
 
                 for i, batch in enumerate(dataloader):
                     x, edge_index, edge_attr, adj, y = batch
@@ -78,7 +86,7 @@ def train_cross_validation(model_cls, dataset, dropout=0, lr=1e-3,
                         y_hat, reg1, reg2 = model(x, edge_index, edge_attr, adj)
                         loss = criterion(y_hat, y)
                         # linear combination of loss and reg(for S)
-                        total_loss = (loss + reg1 + reg2).mean()
+                        total_loss = (10 * loss + reg1 + reg2).mean()
                     else:
                         y_hat = model(x, edge_index, edge_attr, adj)
                         total_loss = criterion(y_hat, y)
@@ -94,6 +102,9 @@ def train_cross_validation(model_cls, dataset, dropout=0, lr=1e-3,
                     running_loss += total_loss.detach()
                     running_corrects += (predicted == label).sum().item()
 
+                    epoch_yhat_0 = np.concatenate([epoch_yhat_0, y_hat[:, 0].view(-1).detach().cpu().numpy()], axis=None)
+                    epoch_yhat_1 = np.concatenate([epoch_yhat_1, y_hat[:, 1].view(-1).detach().cpu().numpy()], axis=None)
+
                 epoch_loss = running_loss / dataloader.__len__()
                 epoch_acc = running_corrects / dataloader.dataset.__len__()
 
@@ -108,4 +119,11 @@ def train_cross_validation(model_cls, dataset, dropout=0, lr=1e-3,
                 writer.add_scalars('data/{}_accuracy'.format(phase),
                                    {'Total Accuracy': epoch_acc},
                                    epoch)
+                writer.add_histogram('hist/{}_yhat_0'.format(phase),
+                                     epoch_yhat_0,
+                                     epoch)
+                writer.add_histogram('hist/{}_yhat_1'.format(phase),
+                                     epoch_yhat_1,
+                                     epoch)
+
     print("Done !")

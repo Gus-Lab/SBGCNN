@@ -5,6 +5,15 @@ import os.path as osp
 import json, codecs
 
 
+def get_model_log_dir(comment, model_name):
+    import socket
+    from datetime import datetime
+    current_time = datetime.now().strftime('%b%d_%H-%M-%S')
+    log_dir = osp.join(
+        current_time + '_' + socket.gethostname() + '_' + comment + '_' + model_name)
+    return log_dir
+
+
 def add_self_loops_with_edge_attr(edge_index, edge_attr, num_nodes=None):
     dtype, device = edge_index.dtype, edge_index.device
     loop = torch.arange(0, num_nodes, dtype=dtype, device=device)

@@ -94,10 +94,9 @@ class EGAT_with_DIFFPool(torch.nn.Module):
         self.drop1 = nn.Dropout(dropout)
         self.fc2 = nn.Linear(128, 32)
         self.drop2 = nn.Dropout(dropout)
-        self.fc3 = nn.Linear(32, 16)
+        self.fc3 = nn.Linear(32, 48)
         self.drop3 = nn.Dropout(dropout)
-        self.fc4 = nn.Linear(16, 2)
-        self.act = nn.LogSoftmax(dim=1)
+        self.fc4 = nn.Linear(48, 2)
 
     def forward(self, x, edge_index, edge_attr, adj, *args, **kwargs):
         """
@@ -109,10 +108,10 @@ class EGAT_with_DIFFPool(torch.nn.Module):
         Note:
             only one graph in a batch is supported.
         """
-        if x.shape[0] != 1:
-            raise Exception("batch size greater than 1 is not supported.")
-
-        x, edge_index, edge_attr, adj = x.squeeze(0), edge_index.squeeze(0), edge_attr.squeeze(0), adj.squeeze(0)
+        if x.dim() == 3:  # a batch
+            if x.shape[0] != 1:
+                raise Exception("batch size greater than 1 is not supported.")
+            x, edge_index, edge_attr, adj = x.squeeze(0), edge_index.squeeze(0), edge_attr.squeeze(0), adj.squeeze(0)
         # # Add self-loops to adjacency matrix.
         # edge_index, edge_attr = remove_self_loops(edge_index, edge_attr)
         # edge_index, edge_attr = add_self_loops_with_edge_attr(edge_index, edge_attr, num_nodes=x.size(0))
@@ -134,4 +133,4 @@ class EGAT_with_DIFFPool(torch.nn.Module):
         x = F.elu(self.drop2(self.fc2(x)))
         x = F.elu(self.drop3(self.fc3(x)))
         x = self.fc4(x)
-        return self.act(x), reg1, reg2
+        return x, reg1, reg2
