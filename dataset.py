@@ -1,5 +1,7 @@
 from torch.utils.data import Dataset
+from torch_geometric.data import Data
 import codecs
+import torch
 from utils import subject_to_data
 
 
@@ -32,7 +34,8 @@ class MmDataset(Dataset):
         return self[0].num_features
 
     def __getitem__(self, index):
-        return self.active_datas[index]
+        data = self.active_datas[index]
+        return data.x, data.edge_index, data.edge_attr, data.adj, data.y
 
     def __len__(self):
         return len(self.active_datas)
@@ -44,3 +47,17 @@ class MmDataset(Dataset):
             index: indices for the split
         """
         self.active_datas = [self.datas[i] for i in index]
+
+    @staticmethod
+    def collate_fn(batch):  # Deprecated
+        """
+        Note: real support of minibatch.
+        :param batch: list of Data object
+        :return:
+        """
+        batch_data = Data()
+
+        for k, _ in batch[0]:
+            batch_data[k] = torch.stack([data[k] for data in batch], dim=0)
+
+        return batch_data

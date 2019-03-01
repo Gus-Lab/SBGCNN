@@ -2,7 +2,7 @@ import torch
 from torch_geometric.data import Data
 import networkx as nx
 import os.path as osp
-import json
+import json, codecs
 
 
 def add_self_loops_with_edge_attr(edge_index, edge_attr, num_nodes=None):
@@ -102,7 +102,8 @@ def networkx_to_data(G):
     edge_attr = torch.tensor(edge_attr, dtype=torch.float)
     return Data(x=x, edge_index=edge_index, edge_attr=edge_attr)
 
-def subject_to_data(self, data_dir, subject_id, scale):
+
+def subject_to_data(data_dir, subject_id, scale):
     """
     given a subject's id and scale, return a Data object to be used in torch_geometric
     """
