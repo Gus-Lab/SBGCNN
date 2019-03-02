@@ -8,6 +8,7 @@ from torch.utils.data import DataLoader
 import numpy as np
 import os.path as osp
 from utils import get_model_log_dir
+from torch_geometric.nn import global_sort_pool
 
 
 def train_cross_validation(model_cls, dataset, dropout=0, lr=1e-3,
@@ -15,25 +16,27 @@ def train_cross_validation(model_cls, dataset, dropout=0, lr=1e-3,
                            use_gpu=True, multi_gpus=True, comment='',
                            tb_service_loc=None):
     """
-    Args:
-        model: model <class>
-        dataloader: pytorch Dataloader
-        comment: comment in the logs, to filter runs in tensorboard
+
+    :param model_cls: pytorch Module cls
+    :param dataset: pytorch Dataset cls
+    :param dropout:
+    :param lr:
+    :param weight_decay:
+    :param num_epochs:
+    :param n_splits: number of kFolds
+    :param use_gpu: bool
+    :param multi_gpus: bool
+    :param comment: comment in the logs, to filter runs in tensorboard
+    :param tb_service_loc: tensorboard service location
+    :return:
     """
     model_name = model_cls.__name__
     # sample data (torch_geometric Data) to construct model
     sample_data = dataset.datas[0]
     device = torch.device('cuda' if torch.cuda.is_available() and use_gpu else 'cpu')
-
-    criterion = nn.CrossEntropyLoss()
-
     device_count = torch.cuda.device_count() if multi_gpus else 1
     if device_count > 1:
         print("Let's use", device_count, "GPUs!")
-
-    dataloader = DataLoader(dataset, shuffle=True, batch_size=device_count)
-
-    print("Training {0} {1} models...".format(n_splits, model_name))
 
     log_dir_base = get_model_log_dir(comment, model_name)
     if tb_service_loc is not None:
@@ -42,18 +45,25 @@ def train_cross_validation(model_cls, dataset, dropout=0, lr=1e-3,
     else:
         print("Please set up TensorBoard")
 
-    folds = KFold(n_splits=n_splits, shuffle=False)
-    fold = 0
-    for train_idx, test_idx in tqdm_notebook(folds.split(dataloader.dataset.datas, dataloader.dataset.datas),
-                                    desc='models', leave=False):
+    criterion = nn.CrossEntropyLoss()
+    dataloader = DataLoader(dataset, shuffle=True, batch_size=device_count)
+
+    print("Training {0} {1} models for cross validation...".format(n_splits, model_name))
+
+    folds, fold = KFold(n_splits=n_splits, shuffle=False), 0
+    for train_idx, test_idx in tqdm_notebook(folds.split(dataloader.dataset.datas,
+                                                         dataloader.dataset.datas),
+                                             desc='models', leave=False):
         fold += 1
         model = model_cls(sample_data, dropout=dropout)
         if fold == 1:
             print(model)
         optimizer = torch.optim.Adam(model.parameters(), lr=lr, betas=(0.9, 0.999),
                                      eps=1e-08, weight_decay=weight_decay, amsgrad=False)
-        writer = SummaryWriter(log_dir=osp.join('runs', log_dir_base+str(fold)))
+        writer = SummaryWriter(log_dir=osp.join('runs', log_dir_base + str(fold)))
         # add_graph is buggy, who want to fix it?
+        # > this bug is complicated... something related to onnx
+        # > https://pytorch.org/docs/stable/onnx.html
         # writer.add_graph(model, input_to_model=dataset.__getitem__(0), verbose=True)
 
         if multi_gpus and use_gpu:
@@ -80,13 +90,14 @@ def train_cross_validation(model_cls, dataset, dropout=0, lr=1e-3,
 
                     if use_gpu:
                         x, edge_index, edge_attr, adj, y = \
-                            Variable(x.cuda()), Variable(edge_index.cuda()), Variable(edge_attr.cuda()), Variable(adj.cuda()), Variable(y.cuda())
+                            Variable(x.cuda()), Variable(edge_index.cuda()), Variable(edge_attr.cuda()), Variable(
+                                adj.cuda()), Variable(y.cuda())
 
                     if model_name == 'EGAT_with_DIFFPool':
                         y_hat, reg1, reg2 = model(x, edge_index, edge_attr, adj)
                         loss = criterion(y_hat, y)
                         # linear combination of loss and reg(for S)
-                        total_loss = (10 * loss + reg1 + reg2).mean()
+                        total_loss = (3 * loss + reg1 + reg2).mean()
                     else:
                         y_hat = model(x, edge_index, edge_attr, adj)
                         total_loss = criterion(y_hat, y)
@@ -102,8 +113,10 @@ def train_cross_validation(model_cls, dataset, dropout=0, lr=1e-3,
                     running_loss += total_loss.detach()
                     running_corrects += (predicted == label).sum().item()
 
-                    epoch_yhat_0 = np.concatenate([epoch_yhat_0, y_hat[:, 0].view(-1).detach().cpu().numpy()], axis=None)
-                    epoch_yhat_1 = np.concatenate([epoch_yhat_1, y_hat[:, 1].view(-1).detach().cpu().numpy()], axis=None)
+                    epoch_yhat_0 = np.concatenate([epoch_yhat_0, y_hat[:, 0].view(-1).detach().cpu().numpy()],
+                                                  axis=None)
+                    epoch_yhat_1 = np.concatenate([epoch_yhat_1, y_hat[:, 1].view(-1).detach().cpu().numpy()],
+                                                  axis=None)
 
                 epoch_loss = running_loss / dataloader.__len__()
                 epoch_acc = running_corrects / dataloader.dataset.__len__()
