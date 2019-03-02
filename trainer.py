@@ -1,14 +1,15 @@
+import os.path as osp
+
+import numpy as np
 import torch
-from torch import nn
-from torch.autograd import Variable
-from tqdm import tqdm, tqdm_notebook
 from sklearn.model_selection import KFold
 from tensorboardX import SummaryWriter
+from torch import nn
+from torch.autograd import Variable
 from torch.utils.data import DataLoader
-import numpy as np
-import os.path as osp
+from tqdm import tqdm_notebook
+
 from utils import get_model_log_dir
-from torch_geometric.nn import global_sort_pool
 
 
 def train_cross_validation(model_cls, dataset, dropout=0, lr=1e-3,
@@ -30,6 +31,7 @@ def train_cross_validation(model_cls, dataset, dropout=0, lr=1e-3,
     :param tb_service_loc: tensorboard service location
     :return:
     """
+    saved_args = locals()
     model_name = model_cls.__name__
     # sample data (torch_geometric Data) to construct model
     sample_data = dataset.datas[0]
@@ -61,6 +63,8 @@ def train_cross_validation(model_cls, dataset, dropout=0, lr=1e-3,
         optimizer = torch.optim.Adam(model.parameters(), lr=lr, betas=(0.9, 0.999),
                                      eps=1e-08, weight_decay=weight_decay, amsgrad=False)
         writer = SummaryWriter(log_dir=osp.join('runs', log_dir_base + str(fold)))
+        writer.add_text('data/model_summary', model.__repr__())
+        writer.add_text('data/training_args', str(saved_args))
         # add_graph is buggy, who want to fix it?
         # > this bug is complicated... something related to onnx
         # > https://pytorch.org/docs/stable/onnx.html
@@ -94,7 +98,7 @@ def train_cross_validation(model_cls, dataset, dropout=0, lr=1e-3,
                                 adj.cuda()), Variable(y.cuda())
 
                     y_hat, reg = model(x, edge_index, edge_attr, adj)
-                    total_loss = criterion(y_hat, y) + reg
+                    total_loss = (criterion(y_hat, y) + reg).mean()
 
                     if phase == 'train':
                         optimizer.zero_grad()

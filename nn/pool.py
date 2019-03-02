@@ -6,6 +6,8 @@ from torch_geometric.nn.inits import glorot
 
 from utils import adj_to_edge_index
 
+from boxx import timeit
+
 
 class SortPool(torch.nn.Module):
 
@@ -53,14 +55,14 @@ class DIFFPool(torch.nn.Module):
         Returns pooled node feature matrix, coarsened adjacency matrix and the
         auxiliary link prediction objective
         Args:
-            adj: Adjacency matrix with shape [num_edge_features, num_nodes, num_nodes]
+            adj: Adjacency matrix with shape [num_nodes, num_nodes]
         """
-        # TODO: separately pool multi-dimension adj
         out_x, out_adj, reg = dense_diff_pool(x, adj, self.s)
         out_adj = out_adj.squeeze(0) if out_adj.dim() == 3 else out_adj
-        out_edge_index, out_edge_attr = adj_to_edge_index(out_adj)
-
-        return out_x, out_edge_index, out_edge_attr, out_adj, reg
+        # with timeit('adj_to_edge_index'):
+        #     out_edge_index, out_edge_attr = adj_to_edge_index(out_adj)
+        # TODO: too slow
+        return out_x, None, None, out_adj, reg
 
     def __repr__(self):
         return '{}({}, {})'.format(self.__class__.__name__, self.in_channels, self.out_channels)
