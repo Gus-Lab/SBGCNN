@@ -20,7 +20,6 @@ class GAT(torch.nn.Module):
         self.fc2 = nn.Linear(84, 24)
         self.drop2 = nn.Dropout(dropout)
         self.fc3 = nn.Linear(24, 2)
-        self.act = nn.LogSoftmax(dim=1)
 
     def forward(self, x, edge_index, *args, **kwargs):
         """
@@ -37,4 +36,6 @@ class GAT(torch.nn.Module):
         x = F.elu(self.drop1(self.fc1(x)))
         x = F.elu(self.drop2(self.fc2(x)))
         x = self.fc3(x)
-        return self.act(x)
+
+        reg = 0
+        return x, reg

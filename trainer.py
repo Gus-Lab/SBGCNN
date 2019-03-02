@@ -93,14 +93,8 @@ def train_cross_validation(model_cls, dataset, dropout=0, lr=1e-3,
                             Variable(x.cuda()), Variable(edge_index.cuda()), Variable(edge_attr.cuda()), Variable(
                                 adj.cuda()), Variable(y.cuda())
 
-                    if model_name == 'EGAT_with_DIFFPool':
-                        y_hat, reg1, reg2 = model(x, edge_index, edge_attr, adj)
-                        loss = criterion(y_hat, y)
-                        # linear combination of loss and reg(for S)
-                        total_loss = (3 * loss + reg1 + reg2).mean()
-                    else:
-                        y_hat = model(x, edge_index, edge_attr, adj)
-                        total_loss = criterion(y_hat, y)
+                    y_hat, reg = model(x, edge_index, edge_attr, adj)
+                    total_loss = criterion(y_hat, y) + reg
 
                     if phase == 'train':
                         optimizer.zero_grad()

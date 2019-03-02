@@ -4,12 +4,12 @@ from torch import nn
 from nn import EGATConv, DIFFPool
 
 
-class EGAT(torch.nn.Module):
+class EGATDP(torch.nn.Module):
     def __init__(self,
                  data,
                  dropout=0
                  ):
-        super(EGAT, self).__init__()
+        super(EGATDP, self).__init__()
         self.dropout = dropout
         self.num_features = data.num_features
         self.num_nodes = data.num_nodes
@@ -66,9 +66,11 @@ class EGAT(torch.nn.Module):
         x = F.elu(x)
         x, edge_index, e, adj, reg1 = self.pool1(x, adj)
         x, edge_index, e, adj, reg2 = self.pool2(x, adj)
-        x = x.view(-1).unsqueeze(0)
+        x = x.view(1, -1)
         x = F.elu(self.drop1(self.fc1(x)))
         x = F.elu(self.drop2(self.fc2(x)))
         x = F.elu(self.drop3(self.fc3(x)))
         x = self.fc4(x)
-        return x, reg1, reg2
+        
+        reg = reg1 + reg2
+        return x, reg

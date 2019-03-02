@@ -16,11 +16,12 @@ class Baseline(torch.nn.Module):
         self.fc2 = nn.Linear(24, 8)
         self.drop2 = nn.Dropout(dropout)
         self.fc3 = nn.Linear(8, 2)
-        self.act = nn.LogSoftmax(dim=1)
 
     def forward(self, x, *args, **kwargs):
         x = x.view(-1, self.in_channels)
         x = F.elu(self.drop1(self.fc1(x)))
         x = F.elu(self.drop2(self.fc2(x)))
         x = self.fc3(x)
-        return self.act(x)
+
+        reg = 0
+        return x, reg
