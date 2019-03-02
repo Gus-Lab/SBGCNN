@@ -2,27 +2,26 @@ import torch
 import torch.nn.functional as F
 from torch import nn
 from torch_geometric.nn import GCNConv
-from torch_geometric.utils import remove_self_loops
-from utils import add_self_loops_with_edge_attr
 from torch_geometric.nn import global_sort_pool
-from nn import SortPool
+
+from nn import SortPool, DIFFPool
 
 
-class DGCNNConv(torch.nn.Module):
+class GCNConvSortPool(torch.nn.Module):
     """
-    designed for multi-channel graph in DGCNN
+    designed for multi-channel graph in DGCNN_SortPool
     """
 
     def __init__(self, in_channels, k):
-        super(DGCNNConv, self).__init__()
+        super(GCNConvSortPool, self).__init__()
 
         self.gcnconv1 = GCNConv(in_channels, 1)
         self.gcnconv2 = GCNConv(1, 1)
-        self.gcnconv3 = GCNConv(1, 1)
-        self.gcnconv4 = GCNConv(1, 1)
-        self.gcnconv5 = GCNConv(1, 1)
+        # self.gcnconv3 = GCNConv(1, 1)
+        # self.gcnconv4 = GCNConv(1, 1)
+        # self.gcnconv5 = GCNConv(1, 1)
         self.sortpool = SortPool(k)
-        self.conv1d1 = nn.Conv1d(5, 3, kernel_size=3, stride=1)
+        self.conv1d1 = nn.Conv1d(2, 3, kernel_size=3, stride=1)
         self.maxpool1 = nn.MaxPool1d(kernel_size=3, stride=1)
         self.conv1d2 = nn.Conv1d(3, 1, kernel_size=3, stride=1)
         self.maxpool2 = nn.MaxPool1d(kernel_size=3, stride=1)
@@ -37,9 +36,9 @@ class DGCNNConv(torch.nn.Module):
         # GCNConv
         x = self.gcnconv1(x, edge_index, edge_attr)
         x = torch.cat([x, self.gcnconv2(x[:, -1].view(-1, 1), edge_index, edge_attr)], dim=-1)
-        x = torch.cat([x, self.gcnconv3(x[:, -1].view(-1, 1), edge_index, edge_attr)], dim=-1)
-        x = torch.cat([x, self.gcnconv4(x[:, -1].view(-1, 1), edge_index, edge_attr)], dim=-1)
-        x = torch.cat([x, self.gcnconv5(x[:, -1].view(-1, 1), edge_index, edge_attr)], dim=-1)
+        # x = torch.cat([x, self.gcnconv3(x[:, -1].view(-1, 1), edge_index, edge_attr)], dim=-1)
+        # x = torch.cat([x, self.gcnconv4(x[:, -1].view(-1, 1), edge_index, edge_attr)], dim=-1)
+        # x = torch.cat([x, self.gcnconv5(x[:, -1].view(-1, 1), edge_index, edge_attr)], dim=-1)
         # Sort Pooling
         N, D = x.size()
         x = self.sortpool(x)
@@ -67,9 +66,9 @@ class DGCNN(torch.nn.Module):
         self.channels = data.edge_attr.shape[-1]
 
         # multi-dimensional edge_attr is implemented as separate channels and concatenated before dense layer.
-        self.dgcnnconv_channel1 = DGCNNConv(self.num_features, k=self.num_nodes)
-        self.dgcnnconv_channel2 = DGCNNConv(self.num_features, k=self.num_nodes)
-        self.dgcnnconv_channel3 = DGCNNConv(self.num_features, k=self.num_nodes)
+        self.dgcnnconv_channel1 = GCNConvSortPool(self.num_features, k=self.num_nodes)
+        self.dgcnnconv_channel2 = GCNConvSortPool(self.num_features, k=self.num_nodes)
+        self.dgcnnconv_channel3 = GCNConvSortPool(self.num_features, k=self.num_nodes)
 
         self.fc1 = nn.Linear(self.channels * 121, 32)
         self.drop1 = nn.Dropout(self.dropout)

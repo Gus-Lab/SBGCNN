@@ -1,12 +1,10 @@
 import torch
 from torch import nn
-import torch.nn.functional as F
-from torch_scatter import scatter_add
-from torch_geometric.utils import softmax
 from torch_geometric.nn import dense_diff_pool
-from utils import adj_to_edge_index
-from torch_geometric.nn.inits import uniform, glorot
 from torch_geometric.nn import global_sort_pool
+from torch_geometric.nn.inits import glorot
+
+from utils import adj_to_edge_index
 
 
 class SortPool(torch.nn.Module):
@@ -32,18 +30,17 @@ class DIFFPool(torch.nn.Module):
     Representation Learning with Differentiable Pooling"
     <https://arxiv.org/abs/1806.08804>`_ paper.
 
-    Args:
-
     """
 
-    def __init__(self,
-                 in_channels,
-                 out_channels,
-                 num_node_features=1):
+    def __init__(self, in_channels, out_channels):
+        """
+
+        :param in_channels: in num_nodes
+        :param out_channels: out num_nodes
+        """
         super(DIFFPool, self).__init__()
         self.in_channels = in_channels
         self.out_channels = out_channels
-        self.num_node_features = num_node_features
         self.s = nn.Parameter(torch.Tensor(in_channels, out_channels))
 
         self.reset_parameters()
@@ -60,7 +57,7 @@ class DIFFPool(torch.nn.Module):
         """
         # TODO: separately pool multi-dimension adj
         out_x, out_adj, reg = dense_diff_pool(x, adj, self.s)
-        out_adj = out_adj.squeeze(0) if out_adj.dim() == 4 else out_adj
+        out_adj = out_adj.squeeze(0) if out_adj.dim() == 3 else out_adj
         out_edge_index, out_edge_attr = adj_to_edge_index(out_adj)
 
         return out_x, out_edge_index, out_edge_attr, out_adj, reg

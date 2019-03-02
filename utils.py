@@ -26,7 +26,7 @@ def add_self_loops_with_edge_attr(edge_index, edge_attr, num_nodes=None):
     return edge_index, edge_attr
 
 
-def adj_to_edge_index(adj):
+def multi_adj_to_edge_index(adj):
     """
     Args:
         adj: <class Tensor> Adjacency matrix with shape [num_edge_features, num_nodes, num_nodes]
@@ -46,6 +46,28 @@ def adj_to_edge_index(adj):
     edge_index = torch.tensor(edge_index, dtype=torch.long)
     edge_index = edge_index.t().contiguous()
     edge_attr = torch.stack([e for e in edge_attr], dim=0)
+
+    return edge_index.to(adj.device), edge_attr.to(adj.device)
+
+
+def adj_to_edge_index(adj):
+    """
+    Args:
+        adj: <class Tensor> Adjacency matrix with shape [num_nodes, num_nodes]
+    """
+    edge_index = list()
+    for i in range(0, adj.shape[0]):
+        for j in range(i, adj.shape[1]):
+            if adj[i][j].sum().item() != 0:
+                edge_index.append([i, j])
+
+    edge_attr = list()
+    for u, v in edge_index:
+        edge_attr.append(adj[u][v])
+
+    edge_index = torch.tensor(edge_index, dtype=torch.long)
+    edge_index = edge_index.t().contiguous()
+    edge_attr = torch.tensor(edge_attr)
 
     return edge_index.to(adj.device), edge_attr.to(adj.device)
 

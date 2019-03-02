@@ -1,11 +1,9 @@
 import torch
-from torch import nn
 import torch.nn.functional as F
-from torch_scatter import scatter_add
+from torch import nn
+from torch_geometric.nn.inits import uniform
 from torch_geometric.utils import softmax
-from torch_geometric.nn import dense_diff_pool
-from utils import adj_to_edge_index
-from torch_geometric.nn.inits import uniform, glorot
+from torch_scatter import scatter_add
 
 
 class EGATConv(torch.nn.Module):
