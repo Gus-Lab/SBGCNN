@@ -89,7 +89,7 @@ def train_cross_validation(model_cls, dataset, dropout=0, lr=1e-3,
                 running_total_loss = 0.0
                 running_corrects = 0
                 running_reg_loss = 0.0
-                running_loss = 0.0
+                running_nll_loss = 0.0
                 epoch_yhat_0, epoch_yhat_1 = np.array([]), np.array([])
 
                 for i, batch in enumerate(dataloader):
@@ -112,7 +112,7 @@ def train_cross_validation(model_cls, dataset, dropout=0, lr=1e-3,
                     _, predicted = torch.max(y_hat, 1)
                     # _, label = torch.max(y, 1)
                     label = y
-                    running_loss += loss.detach()
+                    running_nll_loss += loss.detach()
                     running_total_loss += total_loss.detach()
                     running_reg_loss += reg.sum().item()
                     running_corrects += (predicted == label).sum().item()
@@ -123,9 +123,9 @@ def train_cross_validation(model_cls, dataset, dropout=0, lr=1e-3,
                                                   axis=None)
 
                 epoch_total_loss = running_total_loss / dataloader.__len__()
-                epoch_loss = running_loss / dataloader.__len__()
+                epoch_nll_loss = running_nll_loss / dataloader.__len__()
                 epoch_acc = running_corrects / dataloader.dataset.__len__()
-                epoch_reg = running_reg_loss / dataloader.dataset.__len__()
+                epoch_reg_loss = running_reg_loss / dataloader.dataset.__len__()
 
                 # printing statement cause tqdm to buggy in jupyter notebook
                 # if epoch % 5 == 0:
@@ -134,8 +134,9 @@ def train_cross_validation(model_cls, dataset, dropout=0, lr=1e-3,
 
                 writer.add_scalars('data/{}_loss'.format(phase),
                                    {'Total Loss': epoch_total_loss,
-                                    'NLL Loss': epoch_loss,
-                                    'Total Reg Loss': epoch_reg},
+                                    'NLL Loss': epoch_nll_loss,
+                                    'Total Reg Loss': epoch_reg_loss} if epoch_reg_loss != 0 \
+                                   else {'Total Loss': epoch_total_loss},
                                    epoch)
                 writer.add_scalars('data/{}_accuracy'.format(phase),
                                    {'Total Accuracy': epoch_acc},

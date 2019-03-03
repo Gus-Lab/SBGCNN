@@ -15,13 +15,12 @@ class GCNConvDiffPool(torch.nn.Module):
     def __init__(self, in_channels, num_nodes):
         super(GCNConvDiffPool, self).__init__()
 
-        self.gcnconv1 = GCNConv(in_channels, 4)
-        self.gcnconv2 = GCNConv(4, 4)
-        self.gcnconv3 = GCNConv(4, 4)
-        self.diffpool1 = DIFFPool(num_nodes, 48)
-        self.diffpool2 = DIFFPool(48, 12)
-        self.diffpool3 = DIFFPool(12, 4)
-        self.diffpool4 = DIFFPool(4, 1)
+        self.gcnconv1 = GCNConv(in_channels, 1)
+        self.gcnconv2 = GCNConv(1, 1)
+        # self.diffpool1 = DIFFPool(num_nodes, 32)
+        # self.diffpool2 = DIFFPool(32, 8)
+        # self.diffpool3 = DIFFPool(8, 1)
+        # self.diffpool4 = DIFFPool(4, 1)
 
     def forward(self, x, edge_index, edge_attr, adj):
         """
@@ -31,17 +30,17 @@ class GCNConvDiffPool(torch.nn.Module):
         :param adj: Adjacency matrix with shape [num_nodes, num_nodes]
         :return:
         """
-        # Res-net style gcn
         x = self.gcnconv1(x, edge_index, edge_attr)
-        x = torch.cat([x, self.gcnconv2(x[:, -4:], edge_index, edge_attr)], dim=-1)
-        x = torch.cat([x, self.gcnconv3(x[:, -4:], edge_index, edge_attr)], dim=-1)
+        x = self.gcnconv2(x, edge_index, edge_attr)
+        # x = torch.cat([x, self.gcnconv3(x[:, -1:], edge_index, edge_attr)], dim=-1)
         # Differentiable Pooling
-        x, edge_index, edge_attr, adj, reg1 = self.diffpool1(x, adj)
-        x, edge_index, edge_attr, adj, reg2 = self.diffpool2(x, adj)
-        x, edge_index, edge_attr, adj, reg3 = self.diffpool3(x, adj)
-        x, edge_index, edge_attr, adj, reg4 = self.diffpool4(x, adj)
+        # x, edge_index, edge_attr, adj, reg1 = self.diffpool1(x, adj)
+        # x, edge_index, edge_attr, adj, reg2 = self.diffpool2(x, adj)
+        # x, edge_index, edge_attr, adj, reg3 = self.diffpool3(x, adj)
+        # x, edge_index, edge_attr, adj, reg4 = self.diffpool4(x, adj)
 
-        reg = reg1 + reg2 + reg3 + reg4
+        # reg = reg1
+        reg = torch.tensor([0.0], device=x.device)
         return x, reg
 
 
@@ -61,12 +60,12 @@ class GCNDP(torch.nn.Module):
         self.gcnconvdiffpool_channel1 = GCNConvDiffPool(self.num_features, num_nodes=self.num_nodes)
         self.gcnconvdiffpool_channel2 = GCNConvDiffPool(self.num_features, num_nodes=self.num_nodes)
         self.gcnconvdiffpool_channel3 = GCNConvDiffPool(self.num_features, num_nodes=self.num_nodes)
-
-        self.fc1 = nn.Linear(self.channels * 3 * 4, 32)
+        self.pool1 = nn.MaxPool1d(kernel_size=self.channels)
+        self.fc1 = nn.Linear(129, 8)
         self.drop1 = nn.Dropout(self.dropout)
-        self.fc2 = nn.Linear(32, 6)
-        self.drop2 = nn.Dropout(self.dropout)
-        self.fc3 = nn.Linear(6, 2)
+        # self.fc2 = nn.Linear(8, 8)
+        # self.drop2 = nn.Dropout(self.dropout)
+        self.fc3 = nn.Linear(8, 2)
 
     def forward(self, x, edge_index, edge_attr, adj, *args, **kwargs):
         """
@@ -86,10 +85,11 @@ class GCNDP(torch.nn.Module):
         x1, reg1 = self.gcnconvdiffpool_channel1(x, edge_index, edge_attr[:, 0], adj[0, :, :])
         x2, reg2 = self.gcnconvdiffpool_channel2(x, edge_index, edge_attr[:, 1], adj[1, :, :])
         x3, reg3 = self.gcnconvdiffpool_channel3(x, edge_index, edge_attr[:, 2], adj[2, :, :])
-        all_x = torch.stack([x1, x2, x3])
-        x = all_x.view(1, -1)
+        x = torch.cat([x1, x2, x3], dim=-1).unsqueeze(0)
+        x = self.pool1(x)
+        x = x.view(1, -1)
         x = F.elu(self.drop1(self.fc1(x)))
-        x = F.elu(self.drop2(self.fc2(x)))
+        # x = F.elu(self.drop2(self.fc2(x)))
         x = self.fc3(x)
 
         reg = reg1 + reg2 + reg3
