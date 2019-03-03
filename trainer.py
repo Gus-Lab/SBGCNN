@@ -58,13 +58,13 @@ def train_cross_validation(model_cls, dataset, dropout=0, lr=1e-3,
                                              desc='models', leave=False):
         fold += 1
         model = model_cls(sample_data, dropout=dropout)
+        writer = SummaryWriter(log_dir=osp.join('runs', log_dir_base + str(fold)))
         if fold == 1:
             print(model)
+            writer.add_text('data/model_summary', model.__repr__())
+            writer.add_text('data/training_args', str(saved_args))
         optimizer = torch.optim.Adam(model.parameters(), lr=lr, betas=(0.9, 0.999),
                                      eps=1e-08, weight_decay=weight_decay, amsgrad=False)
-        writer = SummaryWriter(log_dir=osp.join('runs', log_dir_base + str(fold)))
-        writer.add_text('data/model_summary', model.__repr__())
-        writer.add_text('data/training_args', str(saved_args))
         # add_graph is buggy, who want to fix it?
         # > this bug is complicated... something related to onnx
         # > https://pytorch.org/docs/stable/onnx.html
@@ -85,8 +85,11 @@ def train_cross_validation(model_cls, dataset, dropout=0, lr=1e-3,
                     model.eval()
                     dataloader.dataset.set_active_data(test_idx)
 
-                running_loss = 0.0
+                # Logging
+                running_total_loss = 0.0
                 running_corrects = 0
+                running_reg_loss = 0.0
+                running_loss = 0.0
                 epoch_yhat_0, epoch_yhat_1 = np.array([]), np.array([])
 
                 for i, batch in enumerate(dataloader):
@@ -98,7 +101,8 @@ def train_cross_validation(model_cls, dataset, dropout=0, lr=1e-3,
                                 adj.cuda()), Variable(y.cuda())
 
                     y_hat, reg = model(x, edge_index, edge_attr, adj)
-                    total_loss = (criterion(y_hat, y) + reg).mean()
+                    loss = criterion(y_hat, y)
+                    total_loss = (loss + reg).mean()
 
                     if phase == 'train':
                         optimizer.zero_grad()
@@ -108,7 +112,9 @@ def train_cross_validation(model_cls, dataset, dropout=0, lr=1e-3,
                     _, predicted = torch.max(y_hat, 1)
                     # _, label = torch.max(y, 1)
                     label = y
-                    running_loss += total_loss.detach()
+                    running_loss += loss.detach()
+                    running_total_loss += total_loss.detach()
+                    running_reg_loss += reg.sum().item()
                     running_corrects += (predicted == label).sum().item()
 
                     epoch_yhat_0 = np.concatenate([epoch_yhat_0, y_hat[:, 0].view(-1).detach().cpu().numpy()],
@@ -116,16 +122,20 @@ def train_cross_validation(model_cls, dataset, dropout=0, lr=1e-3,
                     epoch_yhat_1 = np.concatenate([epoch_yhat_1, y_hat[:, 1].view(-1).detach().cpu().numpy()],
                                                   axis=None)
 
+                epoch_total_loss = running_total_loss / dataloader.__len__()
                 epoch_loss = running_loss / dataloader.__len__()
                 epoch_acc = running_corrects / dataloader.dataset.__len__()
+                epoch_reg = running_reg_loss / dataloader.dataset.__len__()
 
                 # printing statement cause tqdm to buggy in jupyter notebook
                 # if epoch % 5 == 0:
                 #     print("[Model {0} Epoch {1}]\tLoss: {2:.3f}\tAccuracy: {3:.3f}\t[{4}]".format(
-                #         fold, epoch, epoch_loss, epoch_acc, phase))
+                #         fold, epoch, epoch_total_loss, epoch_acc, phase))
 
                 writer.add_scalars('data/{}_loss'.format(phase),
-                                   {'Total Loss': epoch_loss},
+                                   {'Total Loss': epoch_total_loss,
+                                    'NLL Loss': epoch_loss,
+                                    'Total Reg Loss': epoch_reg},
                                    epoch)
                 writer.add_scalars('data/{}_accuracy'.format(phase),
                                    {'Total Accuracy': epoch_acc},
