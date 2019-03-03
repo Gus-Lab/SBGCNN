@@ -23,5 +23,5 @@ class Baseline(torch.nn.Module):
         x = F.elu(self.drop2(self.fc2(x)))
         x = self.fc3(x)
 
-        reg = 0
+        reg = torch.tensor([0.0], device=x.device)
         return x, reg
