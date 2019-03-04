@@ -135,8 +135,8 @@ def train_cross_validation(model_cls, dataset, dropout=0, lr=1e-3,
                 writer.add_scalars('data/{}_loss'.format(phase),
                                    {'Total Loss': epoch_total_loss,
                                     'NLL Loss': epoch_nll_loss,
-                                    'Total Reg Loss': epoch_reg_loss} if epoch_reg_loss != 0 \
-                                   else {'Total Loss': epoch_total_loss},
+                                    'Total Reg Loss': epoch_reg_loss} if epoch_reg_loss != 0 else
+                                   {'Total Loss': epoch_total_loss},
                                    epoch)
                 writer.add_scalars('data/{}_accuracy'.format(phase),
                                    {'Total Accuracy': epoch_acc},
