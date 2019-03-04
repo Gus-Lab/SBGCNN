@@ -1,7 +1,7 @@
 import torch
 import torch.nn.functional as F
 from torch import nn
-from nn import EGATConv, DIFFPool
+from nn import MEGATConv, DIFFPool
 
 
 class EGATDP(torch.nn.Module):
@@ -15,14 +15,14 @@ class EGATDP(torch.nn.Module):
         self.num_nodes = data.num_nodes
         self.edge_attr_dim = data.edge_attr.shape[-1]
 
-        self.conv1 = EGATConv(self.num_features, 16,
-                              dropout=self.dropout,
-                              edge_attr_dim=self.edge_attr_dim
-                              )
-        self.conv2 = EGATConv(16 * self.edge_attr_dim, 4,
-                              dropout=self.dropout,
-                              edge_attr_dim=self.edge_attr_dim
-                              )
+        self.conv1 = MEGATConv(self.num_features, 16,
+                               dropout=self.dropout,
+                               edge_attr_dim=self.edge_attr_dim
+                               )
+        self.conv2 = MEGATConv(16 * self.edge_attr_dim, 4,
+                               dropout=self.dropout,
+                               edge_attr_dim=self.edge_attr_dim
+                               )
 
         self.pool1 = DIFFPool(self.num_nodes, 16, self.edge_attr_dim)
         self.pool2 = DIFFPool(16, 1, self.edge_attr_dim)
