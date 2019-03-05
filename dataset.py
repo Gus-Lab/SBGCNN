@@ -146,9 +146,6 @@ class MmmDataset(InMemoryDataset):
                                  tmp_dir_path=join(self.raw_dir, 'tmp'),
                                  scale=self.scale,
                                  r=self.r)
-        if data_list[0].y.dim() == 0:  # TODO: remove
-            for data in data_list:
-                data.y = data.y.unsqueeze(0)
         data, slices = self.collate(data_list)
         torch.save((data, slices), self.processed_paths[0])
 
