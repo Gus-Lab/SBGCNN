@@ -1,8 +1,60 @@
 from torch.utils.data import Dataset
-from torch_geometric.data import Data
+from torch_geometric.data import Data, InMemoryDataset
 import codecs
 import torch
 from utils import subject_to_data
+from data.data_utils import read_mm_data
+import os.path as osp
+from os.path import join
+
+
+class MmmDataset(InMemoryDataset):
+    def __init__(self, root, name, transform=None, pre_transform=None,
+                 pre_filter=None, scale='60', r=3):
+        self.name = name
+        self.pre_filter = pre_filter
+        self.scale = scale
+        self.r = r
+        super(MmmDataset, self).__init__(root, transform, pre_transform)
+        self.data, self.slices = torch.load(self.processed_paths[0])
+
+    @property
+    def raw_file_names(self):
+        return ['mc_filtered_subjects', 'FEAT.linear/', 'Fs.subjects/', 'LABELS.xlsx', 'Lausanne/']
+
+    @property
+    def processed_file_names(self):
+        return 'data.pt'
+
+    def download(self):
+        return
+
+    def process(self):
+        """
+        process raw data, and save
+        :return:
+        """
+        subject_list = [line.strip() for line in
+                        codecs.open(osp.join(self.raw_dir, self.raw_file_names[0]), 'r').readlines()]
+        data_list = read_mm_data(subject_list=subject_list,
+                                 fsl_subjects_dir_path=join(self.raw_dir, self.raw_file_names[1]),
+                                 fs_subjects_dir_path=join(self.raw_dir, self.raw_file_names[2]),
+                                 atlas_sheet_path=join(self.raw_dir, self.raw_file_names[3]),
+                                 atlas_dir_path=join(self.raw_dir, self.raw_file_names[4]),
+                                 tmp_dir_path=join(self.raw_dir, 'tmp'),
+                                 scale=self.scale,
+                                 r=self.r)
+        data, slices = self.collate(data_list)
+        torch.save((data, slices), self.processed_paths[0])
+
+    def __repr__(self):
+        return '{}()'.format(self.name)
+
+
+if __name__ == '__main__':
+    mmm = MmmDataset('data/', 'MM')
+    mmm.__getitem__(0)
+    print()
 
 
 class Normalize(object):

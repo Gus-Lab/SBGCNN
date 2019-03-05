@@ -6,7 +6,8 @@ from torch_geometric.utils import softmax
 from torch_scatter import scatter_add
 
 
-class EGATConv(torch.nn.Module):
+class MEGATConv(torch.nn.Module):
+    # Multi-dimension versiion of EGAT
     """
     Adaptive Edge Features Graph Attentional Layer from the `"Adaptive Edge FeaturesGraph Attention Networks (GAT)"
     <https://arxiv.org/abs/1809.02709`_ paper.
@@ -36,7 +37,7 @@ class EGATConv(torch.nn.Module):
                  dropout=0,
                  bias=True,
                  edge_attr_dim=1):
-        super(EGATConv, self).__init__()
+        super(MEGATConv, self).__init__()
 
         self.in_channels = in_channels
         self.out_channels = out_channels
