@@ -1,3 +1,7 @@
 .ideas
 
 train.ipynb
+
+data/raw
+data/processed
+data/nilearn_cache
