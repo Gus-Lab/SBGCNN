@@ -6,13 +6,17 @@ from utils import subject_to_data
 from data.data_utils import read_mm_data
 import os.path as osp
 from os.path import join
+from tqdm import tqdm
+
+from data.data_utils import concat_adj_to_node, normalize_node_feature
 
 
 class MmmDataset(InMemoryDataset):
-    def __init__(self, root, name, transform=None, pre_transform=None,
-                 pre_filter=None, scale='60', r=3):
+    def __init__(self, root, name, transform=None, normalize=None, pre_transform=None,
+                 concat=None, scale='60', r=3):
         self.name = name
-        self.pre_filter = pre_filter
+        self.concat = concat
+        self.normalize = normalize
         self.scale = scale
         self.r = r
         super(MmmDataset, self).__init__(root, transform, pre_transform)
@@ -44,15 +48,30 @@ class MmmDataset(InMemoryDataset):
                                  tmp_dir_path=join(self.raw_dir, 'tmp'),
                                  scale=self.scale,
                                  r=self.r)
-        data, slices = self.collate(data_list)
-        torch.save((data, slices), self.processed_paths[0])
+        # set class attribute for normalization pipeline
+        self.data, self.slices = self.collate(data_list)
+
+        # normalize for anatomical properties
+        self.data.x = self.normalize(self.data.x) if self.normalize is not None else self.data.x
+        # concat adj to node feature
+        if self.concat is not None:
+            data_list = [self.__getitem__(i) for i in range(self.__len__())]
+            for i, data in tqdm(enumerate(data_list), desc='concat'):
+                data_list[i] = self.concat(data)
+            # normalize again for adj
+            self.data, self.slices = self.collate(data_list)
+            self.data.x = self.normalize(self.data.x) if self.normalize is not None else self.data.x
+
+        torch.save((self.data, self.slices), self.processed_paths[0])
 
     def __repr__(self):
         return '{}()'.format(self.name)
 
 
 if __name__ == '__main__':
-    mmm = MmmDataset('data/', 'MM')
+    mmm = MmmDataset('data/', 'MM',
+                     normalize=normalize_node_feature,
+                     concat=concat_adj_to_node)
     mmm.__getitem__(0)
     print()
 

@@ -266,7 +266,7 @@ def read_mm_data(subject_list, fsl_subjects_dir_path, fs_subjects_dir_path,
             if osp.exists(subject_tmp_file_path):
                 done_subject.append(subject)
     job_list = [subject for subject in subject_list if subject not in done_subject]
-    print("Processing  Job list: {}".format(len(job_list)), job_list)
+    print("Processing Job list: {}".format(len(job_list)), job_list)
 
     if len(job_list) > 0:
         correlation_measure = ConnectivityMeasure(kind='correlation')
@@ -280,6 +280,7 @@ def read_mm_data(subject_list, fsl_subjects_dir_path, fs_subjects_dir_path,
         pool.close()
         pool.join()
 
+    print("Reading data from file...")
     data_list = []
     for subject in subject_list:
         subject_tmp_file_path = osp.join(tmp_dir_path, '{}.pickle'.format(subject))
@@ -288,26 +289,52 @@ def read_mm_data(subject_list, fsl_subjects_dir_path, fs_subjects_dir_path,
         data_list = data_list + subject_data_list
     return data_list
 
+
 def normalize_node_feature(x):
     """
-    Normalize node feature for a matrix x
-    :param x: :obj:`torch.Tensor` Node feature matrix with shape [num_nodes, num_node_features]
+    Normalize node feature for node feature matrix x
+    :param x: Node feature matrix with shape [num_nodes, num_node_features]
     :return:
     """
     intermediate_tensor = x.abs().sum(dim=1)
-    zero_tensor = torch.tensor([0])
+    zero_tensor = torch.tensor([0], dtype=torch.float)
     mask = 1 - torch.eq(intermediate_tensor, zero_tensor)  # non-zero vectors
     mean_tensor = torch.mean(x[mask], dim=0)
     std_tensor = torch.std(x[mask], dim=0)
 
     # set missing value (SubCortical)
-    mask = torch.eq(intermediate_tensor, zero_tensor)  # zore vectors
+    mask = torch.eq(intermediate_tensor, zero_tensor)  # zero vectors
     x[mask] = mean_tensor
 
     # z-score norm
     x = (x - mean_tensor) / std_tensor
 
     return x
+
+
+def edge_to_adj(edge_index, edge_attr, num_nodes):
+    """
+    Return:
+        adj: Adjacency matrix with shape [num_nodes, num_nodes, num_edge_features]
+    """
+    # change divice placement to speed up
+    adj = torch.zeros(num_nodes, num_nodes, edge_attr.shape[-1])
+    for i, (u, v) in enumerate(edge_index.transpose(0, 1)):
+        adj[u][v] = edge_attr[i]
+    # adj = adj.permute(2, 0, 1)
+    return adj
+
+
+def concat_adj_to_node(data):
+    """
+    Note: for a single graph
+    :param data:
+    :return:
+    """
+    adj = edge_to_adj(data.edge_index, data.edge_attr, data.num_nodes)
+    adj = adj.view(data.num_nodes, -1)
+    data.x = torch.cat([data.x, adj], dim=1)
+    return data
 
 
 if __name__ == '__main__':
