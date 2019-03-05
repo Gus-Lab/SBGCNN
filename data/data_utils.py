@@ -288,6 +288,27 @@ def read_mm_data(subject_list, fsl_subjects_dir_path, fs_subjects_dir_path,
         data_list = data_list + subject_data_list
     return data_list
 
+def normalize_node_feature(x):
+    """
+    Normalize node feature for a matrix x
+    :param x: :obj:`torch.Tensor` Node feature matrix with shape [num_nodes, num_node_features]
+    :return:
+    """
+    intermediate_tensor = x.abs().sum(dim=1)
+    zero_tensor = torch.tensor([0])
+    mask = 1 - torch.eq(intermediate_tensor, zero_tensor)  # non-zero vectors
+    mean_tensor = torch.mean(x[mask], dim=0)
+    std_tensor = torch.std(x[mask], dim=0)
+
+    # set missing value (SubCortical)
+    mask = torch.eq(intermediate_tensor, zero_tensor)  # zore vectors
+    x[mask] = mean_tensor
+
+    # z-score norm
+    x = (x - mean_tensor) / std_tensor
+
+    return x
+
 
 if __name__ == '__main__':
     nnode_attr_array = to_node_attr_array('3044_1', '/data_59/huze/Fs.subjects', "/data_59/huze/Lausanne/LABELS.xlsx",
