@@ -93,9 +93,6 @@ def train_cross_validation(model_cls, dataset, dropout=0.0, lr=1e-3,
                                          batch_size=1,
                                          num_workers=num_workers,
                                          pin_memory=pin_memory)
-            # # TODO: dummy... but fast
-            # train_data_iter = [data for data in train_dataloader]
-            # test_data_iter = [data for data in test_dataloader]
 
             writer = SummaryWriter(log_dir=osp.join('runs', log_dir_base + str(fold)))
             if fold == 1:
@@ -136,7 +133,6 @@ def train_cross_validation(model_cls, dataset, dropout=0.0, lr=1e-3,
                 epoch_yhat_0, epoch_yhat_1 = torch.tensor([]), torch.tensor([])
 
                 for data in tqdm_notebook(dataloader, desc=phase, leave=False):
-                    # data = copy.copy(d)  # TODO: CUDA memory allocation gets dummy
 
                     if use_gpu and not multi_gpus:  # assign tensor to gpu
                         for key in data.keys:
@@ -163,9 +159,6 @@ def train_cross_validation(model_cls, dataset, dropout=0.0, lr=1e-3,
 
                     epoch_yhat_0 = torch.cat([epoch_yhat_0, y_hat[:, 0].detach().view(-1).cpu()])
                     epoch_yhat_1 = torch.cat([epoch_yhat_1, y_hat[:, 1].detach().view(-1).cpu()])
-
-                    # del data, y, y_hat, reg, loss, total_loss, predicted, label
-                    # # TODO: CUDA memory allocation gets dummy
 
                 epoch_total_loss = running_total_loss / dataloader.__len__()
                 epoch_nll_loss = running_nll_loss / dataloader.__len__()
