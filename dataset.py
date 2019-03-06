@@ -100,6 +100,22 @@ class MmDataset(InMemoryDataset):
         data, slices = self.collate(data_list)
         return data
 
+    def collate_fn_multi_gpu(self, device_count, data_list):
+        """
+        for Pytorch DataLoader
+        Usage: partial(collate_fn_multi_gpu, device_count)(data_list)
+        :param data_list:
+        :param device_count: gpu count used
+        :return: list of data
+        """
+        data_chunks = [data_list[i::device_count] for i in range(device_count)]
+        collated_data_list = []
+        for data_chunk in data_chunks:
+            data, slices = self.collate(data_chunk)
+            collated_data_list.append(data)
+
+        return collated_data_list
+
     def set_active_data(self, index):
         """
         copy the dataset by index
@@ -114,8 +130,8 @@ class MmDataset(InMemoryDataset):
 
 if __name__ == '__main__':
     mmm = MmDataset('data/', 'MM',
-                     pre_transform=normalize_node_feature_sample_wise,
-                     pre_concat=concat_adj_to_node)
+                    pre_transform=normalize_node_feature_sample_wise,
+                    pre_concat=concat_adj_to_node)
     mmm.__getitem__(0)
     print()
 

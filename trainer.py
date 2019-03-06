@@ -1,4 +1,5 @@
 import os.path as osp
+from functools import partial
 
 import numpy as np
 import torch
@@ -9,11 +10,15 @@ from torch.autograd import Variable
 from torch.utils.data import DataLoader
 from tqdm import tqdm_notebook
 
+from data.data_utils import normalize_node_feature_sample_wise, concat_adj_to_node
+from dataset import MmDataset
+from models import Baseline
 from utils import get_model_log_dir
 
 from boxx import timeit
 
-def train_cross_validation(model_cls, dataset, dropout=0, lr=1e-3,
+
+def train_cross_validation(model_cls, dataset, dropout=0.0, lr=1e-3,
                            weight_decay=1e-2, num_epochs=200, n_splits=5,
                            use_gpu=True, multi_gpus=True, comment='',
                            tb_service_loc=None, batch_size=1,
@@ -59,22 +64,26 @@ def train_cross_validation(model_cls, dataset, dropout=0, lr=1e-3,
     for train_idx, test_idx in tqdm_notebook(folds.split(list(range(dataset.__len__())),
                                                          list(range(dataset.__len__()))),
                                              desc='models', leave=False):
+        fold += 1
+        print("creating dataloader tor fold {}".format(fold))
         with timeit(name='create dataloader'):
-            fold += 1
             model = model_cls(sample_data, dropout=dropout)
 
+            collate_fn = partial(dataset.collate_fn_multi_gpu, device_count) if multi_gpus else dataset.collate_fn
             train_dataloader = DataLoader(dataset.set_active_data(train_idx),
                                           shuffle=True,
-                                          collate_fn=dataset.collate_fn,
+                                          collate_fn=collate_fn,
                                           batch_size=device_count * batch_size,
                                           num_workers=num_workers,
                                           pin_memory=pin_memory)
             test_dataloader = DataLoader(dataset.set_active_data(test_idx),
                                          shuffle=True,
-                                         collate_fn=dataset.collate_fn,
+                                         collate_fn=collate_fn,
                                          batch_size=device_count * batch_size,
                                          num_workers=num_workers,
                                          pin_memory=pin_memory)
+            train_iter = train_dataloader.__iter__()
+            test_iter = test_dataloader.__iter__()
 
             writer = SummaryWriter(log_dir=osp.join('runs', log_dir_base + str(fold)))
             if fold == 1:
@@ -96,30 +105,31 @@ def train_cross_validation(model_cls, dataset, dropout=0, lr=1e-3,
         for epoch in tqdm_notebook(range(1, num_epochs + 1), desc='Epoch', leave=False):
 
             for phase in ['train', 'validation']:
-                with timeit(name='switch phase'):
-                    if phase == 'train':
-                        model.train()
-                        dataloader = train_dataloader
-                    else:
-                        model.eval()
-                        dataloader = test_dataloader
 
-                    # Logging
-                    running_total_loss = 0.0
-                    running_corrects = 0
-                    running_reg_loss = 0.0
-                    running_nll_loss = 0.0
-                    epoch_yhat_0, epoch_yhat_1 = np.array([]), np.array([])
+                if phase == 'train':
+                    model.train()
+                    data_iter = train_iter
+                    dataloader = train_dataloader
+                else:
+                    model.eval()
+                    data_iter = test_iter
+                    dataloader = test_dataloader
+
+                # Logging
+                running_total_loss = 0.0
+                running_corrects = 0
+                running_reg_loss = 0.0
+                running_nll_loss = 0.0
+                epoch_yhat_0, epoch_yhat_1 = torch.tensor([]), torch.tensor([])
 
                 for data in tqdm_notebook(dataloader, desc='DataLoader', leave=False):
 
-                    with timeit(name='input to device'):
-                        if use_gpu:
-                            for key in data.keys:
-                                data[key] = Variable(data[key].cuda())
-                                # data[key] = data[key].to(device)
+                    if use_gpu and not multi_gpus:  # assign tensor to gpu
+                        for key in data.keys:
+                            data[key] = Variable(data[key].cuda())
+                            # data[key] = data[key].to(device)
 
-                    y = data.y
+                    y = data.y if not multi_gpus else torch.cat([d.y for d in data])
                     y_hat, reg = model(data)
                     loss = criterion(y_hat, y)
                     total_loss = (loss + reg).mean()
@@ -137,10 +147,8 @@ def train_cross_validation(model_cls, dataset, dropout=0, lr=1e-3,
                     running_reg_loss += reg.sum().item()
                     running_corrects += (predicted == label).sum().item()
 
-                    epoch_yhat_0 = np.concatenate([epoch_yhat_0, y_hat[:, 0].view(-1).detach().cpu().numpy()],
-                                                  axis=None)
-                    epoch_yhat_1 = np.concatenate([epoch_yhat_1, y_hat[:, 1].view(-1).detach().cpu().numpy()],
-                                                  axis=None)
+                    epoch_yhat_0 = torch.cat([epoch_yhat_0, y_hat[:, 0].view(-1).detach().cpu()])
+                    epoch_yhat_1 = torch.cat([epoch_yhat_1, y_hat[:, 1].view(-1).detach().cpu()])
 
                 epoch_total_loss = running_total_loss / dataloader.__len__()
                 epoch_nll_loss = running_nll_loss / dataloader.__len__()
@@ -169,3 +177,14 @@ def train_cross_validation(model_cls, dataset, dropout=0, lr=1e-3,
                                      epoch)
 
     print("Done !")
+
+
+if __name__ == "__main__":
+    dataset = MmDataset('data/', 'MM',
+                        pre_transform=normalize_node_feature_sample_wise,
+                        pre_concat=concat_adj_to_node)
+    model = Baseline
+    train_cross_validation(model, dataset, comment='test_batch', batch_size=512,
+                           num_epochs=500, dropout=0.3, lr=1e-8, weight_decay=1e-2,
+                           use_gpu=True, multi_gpus=False, tb_service_loc="",
+                           num_workers=28, pin_memory=True)
