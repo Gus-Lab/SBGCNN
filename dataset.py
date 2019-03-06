@@ -15,7 +15,7 @@ from data.data_utils import concat_adj_to_node, \
     normalize_node_feature_sample_wise
 
 
-class MmmDataset(InMemoryDataset):
+class MmDataset(InMemoryDataset):
     def __init__(self, root, name, transform=None, pre_transform=None,
                  pre_concat=None, scale='60', r=3):
         self.name = name
@@ -23,7 +23,7 @@ class MmmDataset(InMemoryDataset):
         self.pre_transform = pre_transform
         self.scale = scale
         self.r = r
-        super(MmmDataset, self).__init__(root, transform, pre_transform)
+        super(MmDataset, self).__init__(root, transform, pre_transform)
         self.data, self.slices = torch.load(self.processed_paths[0])
 
         # check if flag was added to edge_index
@@ -100,12 +100,20 @@ class MmmDataset(InMemoryDataset):
         data, slices = self.collate(data_list)
         return data
 
+    def set_active_data(self, index):
+        """
+        copy the dataset by index
+        :param index:
+        :return:
+        """
+        return self._indexing(index)
+
     def __repr__(self):
         return '{}()'.format(self.name)
 
 
 if __name__ == '__main__':
-    mmm = MmmDataset('data/', 'MM',
+    mmm = MmDataset('data/', 'MM',
                      pre_transform=normalize_node_feature_sample_wise,
                      pre_concat=concat_adj_to_node)
     mmm.__getitem__(0)
@@ -156,7 +164,7 @@ class Normalize(object):
         return tensor
 
 
-class MmDataset(Dataset):
+class MmmDataset(Dataset):
     def __init__(self,
                  subject_id_path=str,
                  G_path=str,

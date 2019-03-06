@@ -11,13 +11,17 @@ from tqdm import tqdm_notebook
 
 from utils import get_model_log_dir
 
+from boxx import timeit
 
 def train_cross_validation(model_cls, dataset, dropout=0, lr=1e-3,
                            weight_decay=1e-2, num_epochs=200, n_splits=5,
                            use_gpu=True, multi_gpus=True, comment='',
-                           tb_service_loc=None, batch_size=1):
+                           tb_service_loc=None, batch_size=1,
+                           num_workers=0, pin_memory=False):
     """
 
+    :param pin_memory: DataLoader args https://devblogs.nvidia.com/how-optimize-data-transfers-cuda-cc/
+    :param num_workers: DataLoader args
     :param model_cls: pytorch Module cls
     :param dataset: pytorch Dataset cls
     :param dropout:
@@ -29,7 +33,7 @@ def train_cross_validation(model_cls, dataset, dropout=0, lr=1e-3,
     :param multi_gpus: bool
     :param comment: comment in the logs, to filter runs in tensorboard
     :param tb_service_loc: tensorboard service location
-    :param batch_size: make sure your dataset and model support mini-batch setting
+    :param batch_size: DataLoader args, make sure your dataset and model support mini-batch setting
     :return:
     """
     saved_args = locals()
@@ -49,25 +53,36 @@ def train_cross_validation(model_cls, dataset, dropout=0, lr=1e-3,
         print("Please set up TensorBoard")
 
     criterion = nn.CrossEntropyLoss()
-    dataloader = DataLoader(dataset, shuffle=True,
-                            collate_fn=dataset.collate_fn,
-                            batch_size=device_count * batch_size)
 
     print("Training {0} {1} models for cross validation...".format(n_splits, model_name))
-
     folds, fold = KFold(n_splits=n_splits, shuffle=False), 0
-    for train_idx, test_idx in tqdm_notebook(folds.split(dataloader.dataset.datas,
-                                                         dataloader.dataset.datas),
+    for train_idx, test_idx in tqdm_notebook(folds.split(list(range(dataset.__len__())),
+                                                         list(range(dataset.__len__()))),
                                              desc='models', leave=False):
-        fold += 1
-        model = model_cls(sample_data, dropout=dropout)
-        writer = SummaryWriter(log_dir=osp.join('runs', log_dir_base + str(fold)))
-        if fold == 1:
-            print(model)
-            writer.add_text('data/model_summary', model.__repr__())
-            writer.add_text('data/training_args', str(saved_args))
-        optimizer = torch.optim.Adam(model.parameters(), lr=lr, betas=(0.9, 0.999),
-                                     eps=1e-08, weight_decay=weight_decay, amsgrad=False)
+        with timeit(name='create dataloader'):
+            fold += 1
+            model = model_cls(sample_data, dropout=dropout)
+
+            train_dataloader = DataLoader(dataset.set_active_data(train_idx),
+                                          shuffle=True,
+                                          collate_fn=dataset.collate_fn,
+                                          batch_size=device_count * batch_size,
+                                          num_workers=num_workers,
+                                          pin_memory=pin_memory)
+            test_dataloader = DataLoader(dataset.set_active_data(test_idx),
+                                         shuffle=True,
+                                         collate_fn=dataset.collate_fn,
+                                         batch_size=device_count * batch_size,
+                                         num_workers=num_workers,
+                                         pin_memory=pin_memory)
+
+            writer = SummaryWriter(log_dir=osp.join('runs', log_dir_base + str(fold)))
+            if fold == 1:
+                print(model)
+                writer.add_text('data/model_summary', model.__repr__())
+                writer.add_text('data/training_args', str(saved_args))
+            optimizer = torch.optim.Adam(model.parameters(), lr=lr, betas=(0.9, 0.999),
+                                         eps=1e-08, weight_decay=weight_decay, amsgrad=False)
         # add_graph is buggy, who want to fix it?
         # > this bug is complicated... something related to onnx
         # > https://pytorch.org/docs/stable/onnx.html
@@ -81,25 +96,28 @@ def train_cross_validation(model_cls, dataset, dropout=0, lr=1e-3,
         for epoch in tqdm_notebook(range(1, num_epochs + 1), desc='Epoch', leave=False):
 
             for phase in ['train', 'validation']:
-                if phase == 'train':
-                    model.train()
-                    dataloader.dataset.set_active_data(train_idx)
-                else:
-                    model.eval()
-                    dataloader.dataset.set_active_data(test_idx)
+                with timeit(name='switch phase'):
+                    if phase == 'train':
+                        model.train()
+                        dataloader = train_dataloader
+                    else:
+                        model.eval()
+                        dataloader = test_dataloader
 
-                # Logging
-                running_total_loss = 0.0
-                running_corrects = 0
-                running_reg_loss = 0.0
-                running_nll_loss = 0.0
-                epoch_yhat_0, epoch_yhat_1 = np.array([]), np.array([])
+                    # Logging
+                    running_total_loss = 0.0
+                    running_corrects = 0
+                    running_reg_loss = 0.0
+                    running_nll_loss = 0.0
+                    epoch_yhat_0, epoch_yhat_1 = np.array([]), np.array([])
 
-                for data in dataloader:
+                for data in tqdm_notebook(dataloader, desc='DataLoader', leave=False):
 
-                    if use_gpu:
-                        for key in data.keys:
-                            data[key] = Variable(data[key].cuda())
+                    with timeit(name='input to device'):
+                        if use_gpu:
+                            for key in data.keys:
+                                data[key] = Variable(data[key].cuda())
+                                # data[key] = data[key].to(device)
 
                     y = data.y
                     y_hat, reg = model(data)

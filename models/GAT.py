@@ -37,5 +37,5 @@ class GAT(torch.nn.Module):
         x = F.elu(self.drop2(self.fc2(x)))
         x = self.fc3(x)
 
-        reg = torch.tensor([0.0], device=x.device)
+        reg = torch.tensor([0], dtype=torch.float, device=x.device)
         return x, reg
