@@ -151,9 +151,9 @@ def train_cross_validation(model_cls, dataset, dropout=0.0, lr=1e-3,
                     _, predicted = torch.max(y_hat, 1)
                     # _, label = torch.max(y, 1)
                     label = y
-                    running_nll_loss += loss.detach()
-                    running_total_loss += total_loss.detach()
-                    running_reg_loss += reg.sum().item().detach()
+                    running_nll_loss += loss.item()
+                    running_total_loss += total_loss.item()
+                    running_reg_loss += reg.sum().item()
                     running_corrects += (predicted == label).sum().item()
 
                     epoch_yhat_0 = torch.cat([epoch_yhat_0, y_hat[:, 0].detach().view(-1).cpu()])
