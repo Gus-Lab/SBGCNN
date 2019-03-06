@@ -1,5 +1,6 @@
 import os.path as osp
 from functools import partial
+from itertools import cycle
 
 import numpy as np
 import torch
@@ -16,6 +17,11 @@ from models import Baseline
 from utils import get_model_log_dir
 
 from boxx import timeit
+
+
+def my_iter(data_list):
+    for data in data_list:
+        yield data
 
 
 def train_cross_validation(model_cls, dataset, dropout=0.0, lr=1e-3,
@@ -82,8 +88,9 @@ def train_cross_validation(model_cls, dataset, dropout=0.0, lr=1e-3,
                                          batch_size=device_count * batch_size,
                                          num_workers=num_workers,
                                          pin_memory=pin_memory)
-            train_iter = train_dataloader.__iter__()
-            test_iter = test_dataloader.__iter__()
+            # dummy... but fast
+            train_data_iter = my_iter([data for data in train_dataloader])
+            test_data_iter = my_iter([data for data in test_dataloader])
 
             writer = SummaryWriter(log_dir=osp.join('runs', log_dir_base + str(fold)))
             if fold == 1:
@@ -92,6 +99,7 @@ def train_cross_validation(model_cls, dataset, dropout=0.0, lr=1e-3,
                 writer.add_text('data/training_args', str(saved_args))
             optimizer = torch.optim.Adam(model.parameters(), lr=lr, betas=(0.9, 0.999),
                                          eps=1e-08, weight_decay=weight_decay, amsgrad=False)
+
         # add_graph is buggy, who want to fix it?
         # > this bug is complicated... something related to onnx
         # > https://pytorch.org/docs/stable/onnx.html
@@ -108,11 +116,11 @@ def train_cross_validation(model_cls, dataset, dropout=0.0, lr=1e-3,
 
                 if phase == 'train':
                     model.train()
-                    data_iter = train_iter
+                    data_iter = train_data_iter
                     dataloader = train_dataloader
                 else:
                     model.eval()
-                    data_iter = test_iter
+                    data_iter = test_data_iter
                     dataloader = test_dataloader
 
                 # Logging
@@ -122,7 +130,7 @@ def train_cross_validation(model_cls, dataset, dropout=0.0, lr=1e-3,
                 running_nll_loss = 0.0
                 epoch_yhat_0, epoch_yhat_1 = torch.tensor([]), torch.tensor([])
 
-                for data in tqdm_notebook(dataloader, desc='DataLoader', leave=False):
+                for data in tqdm_notebook(data_iter, desc='DataLoader', leave=False):
 
                     if use_gpu and not multi_gpus:  # assign tensor to gpu
                         for key in data.keys:
@@ -132,7 +140,8 @@ def train_cross_validation(model_cls, dataset, dropout=0.0, lr=1e-3,
                     y = data.y if not multi_gpus else torch.cat([d.y for d in data])
                     y_hat, reg = model(data)
                     loss = criterion(y_hat, y)
-                    total_loss = (loss + reg).mean()
+                    total_loss = loss + reg
+                    print(total_loss, total_loss.device)
 
                     if phase == 'train':
                         optimizer.zero_grad()
@@ -144,11 +153,13 @@ def train_cross_validation(model_cls, dataset, dropout=0.0, lr=1e-3,
                     label = y
                     running_nll_loss += loss.detach()
                     running_total_loss += total_loss.detach()
-                    running_reg_loss += reg.sum().item()
+                    running_reg_loss += reg.sum().item().detach()
                     running_corrects += (predicted == label).sum().item()
 
-                    epoch_yhat_0 = torch.cat([epoch_yhat_0, y_hat[:, 0].view(-1).detach().cpu()])
-                    epoch_yhat_1 = torch.cat([epoch_yhat_1, y_hat[:, 1].view(-1).detach().cpu()])
+                    epoch_yhat_0 = torch.cat([epoch_yhat_0, y_hat[:, 0].detach().view(-1).cpu()])
+                    epoch_yhat_1 = torch.cat([epoch_yhat_1, y_hat[:, 1].detach().view(-1).cpu()])
+
+                    del data, y, y_hat, reg, loss, total_loss, predicted, label
 
                 epoch_total_loss = running_total_loss / dataloader.__len__()
                 epoch_nll_loss = running_nll_loss / dataloader.__len__()
