@@ -25,6 +25,8 @@ class MmmDataset(InMemoryDataset):
         self.r = r
         super(MmmDataset, self).__init__(root, transform, pre_transform)
         self.data, self.slices = torch.load(self.processed_paths[0])
+
+        # check if flag was added to edge_index
         if self.data.edge_index[0][-1] < self.data.num_nodes - 1:
             self.add_flag_to_edge_index()
 
