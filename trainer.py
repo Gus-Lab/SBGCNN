@@ -1,3 +1,4 @@
+import copy
 import os.path as osp
 from functools import partial
 from itertools import cycle
@@ -26,11 +27,12 @@ def my_iter(data_list):
 
 def train_cross_validation(model_cls, dataset, dropout=0.0, lr=1e-3,
                            weight_decay=1e-2, num_epochs=200, n_splits=5,
-                           use_gpu=True, multi_gpus=True, comment='',
+                           use_gpu=True, multi_gpus=False, comment='',
                            tb_service_loc=None, batch_size=1,
-                           num_workers=0, pin_memory=False):
+                           num_workers=0, pin_memory=False, cuda_device=None):
     """
-
+    TODO: multi-gpu support
+    :param cuda_device:
     :param pin_memory: DataLoader args https://devblogs.nvidia.com/how-optimize-data-transfers-cuda-cc/
     :param num_workers: DataLoader args
     :param model_cls: pytorch Module cls
@@ -44,14 +46,17 @@ def train_cross_validation(model_cls, dataset, dropout=0.0, lr=1e-3,
     :param multi_gpus: bool
     :param comment: comment in the logs, to filter runs in tensorboard
     :param tb_service_loc: tensorboard service location
-    :param batch_size: DataLoader args, make sure your dataset and model support mini-batch setting
+    :param batch_size: Dataset args not DataLoader
     :return:
     """
     saved_args = locals()
     model_name = model_cls.__name__
     # sample data (torch_geometric Data) to construct model
     sample_data = dataset.__getitem__(0)
-    device = torch.device('cuda' if torch.cuda.is_available() and use_gpu else 'cpu')
+    if not cuda_device:
+        device = torch.device('cuda' if torch.cuda.is_available() and use_gpu else 'cpu')
+    else:
+        device = cuda_device
     device_count = torch.cuda.device_count() if multi_gpus else 1
     if device_count > 1:
         print("Let's use", device_count, "GPUs!")
@@ -75,22 +80,22 @@ def train_cross_validation(model_cls, dataset, dropout=0.0, lr=1e-3,
         with timeit(name='create dataloader'):
             model = model_cls(sample_data, dropout=dropout)
 
-            collate_fn = partial(dataset.collate_fn_multi_gpu, device_count) if multi_gpus else dataset.collate_fn
+            # collate_fn = partial(dataset.collate_fn_multi_gpu, device_count) if multi_gpus else dataset.collate_fn
             train_dataloader = DataLoader(dataset.set_active_data(train_idx),
                                           shuffle=True,
-                                          collate_fn=collate_fn,
-                                          batch_size=device_count * batch_size,
+                                          collate_fn=lambda x: x[0],  # collate when initializing dataset
+                                          batch_size=1,
                                           num_workers=num_workers,
                                           pin_memory=pin_memory)
             test_dataloader = DataLoader(dataset.set_active_data(test_idx),
                                          shuffle=True,
-                                         collate_fn=collate_fn,
-                                         batch_size=device_count * batch_size,
+                                         collate_fn=lambda x: x[0],
+                                         batch_size=1,
                                          num_workers=num_workers,
                                          pin_memory=pin_memory)
-            # dummy... but fast
-            train_data_iter = my_iter([data for data in train_dataloader])
-            test_data_iter = my_iter([data for data in test_dataloader])
+            # # TODO: dummy... but fast
+            # train_data_iter = [data for data in train_dataloader]
+            # test_data_iter = [data for data in test_dataloader]
 
             writer = SummaryWriter(log_dir=osp.join('runs', log_dir_base + str(fold)))
             if fold == 1:
@@ -116,11 +121,11 @@ def train_cross_validation(model_cls, dataset, dropout=0.0, lr=1e-3,
 
                 if phase == 'train':
                     model.train()
-                    data_iter = train_data_iter
+                    # data_iter = train_data_iter
                     dataloader = train_dataloader
                 else:
                     model.eval()
-                    data_iter = test_data_iter
+                    # data_iter = test_data_iter
                     dataloader = test_dataloader
 
                 # Logging
@@ -130,18 +135,18 @@ def train_cross_validation(model_cls, dataset, dropout=0.0, lr=1e-3,
                 running_nll_loss = 0.0
                 epoch_yhat_0, epoch_yhat_1 = torch.tensor([]), torch.tensor([])
 
-                for data in tqdm_notebook(data_iter, desc='DataLoader', leave=False):
+                for data in tqdm_notebook(dataloader, desc=phase, leave=False):
+                    # data = copy.copy(d)  # TODO: CUDA memory allocation gets dummy
 
                     if use_gpu and not multi_gpus:  # assign tensor to gpu
                         for key in data.keys:
-                            data[key] = Variable(data[key].cuda())
+                            data[key] = Variable(data[key].to(device))
                             # data[key] = data[key].to(device)
 
                     y = data.y if not multi_gpus else torch.cat([d.y for d in data])
                     y_hat, reg = model(data)
                     loss = criterion(y_hat, y)
                     total_loss = loss + reg
-                    print(total_loss, total_loss.device)
 
                     if phase == 'train':
                         optimizer.zero_grad()
@@ -159,11 +164,12 @@ def train_cross_validation(model_cls, dataset, dropout=0.0, lr=1e-3,
                     epoch_yhat_0 = torch.cat([epoch_yhat_0, y_hat[:, 0].detach().view(-1).cpu()])
                     epoch_yhat_1 = torch.cat([epoch_yhat_1, y_hat[:, 1].detach().view(-1).cpu()])
 
-                    del data, y, y_hat, reg, loss, total_loss, predicted, label
+                    # del data, y, y_hat, reg, loss, total_loss, predicted, label
+                    # # TODO: CUDA memory allocation gets dummy
 
                 epoch_total_loss = running_total_loss / dataloader.__len__()
                 epoch_nll_loss = running_nll_loss / dataloader.__len__()
-                epoch_acc = running_corrects / dataloader.dataset.__len__()
+                epoch_acc = running_corrects / dataloader.dataset.__len__() / dataloader.dataset.batch_size
                 epoch_reg_loss = running_reg_loss / dataloader.dataset.__len__()
 
                 # printing statement cause tqdm to buggy in jupyter notebook
@@ -193,7 +199,8 @@ def train_cross_validation(model_cls, dataset, dropout=0.0, lr=1e-3,
 if __name__ == "__main__":
     dataset = MmDataset('data/', 'MM',
                         pre_transform=normalize_node_feature_sample_wise,
-                        pre_concat=concat_adj_to_node)
+                        pre_concat=concat_adj_to_node,
+                        batch_size=1000)
     model = Baseline
     train_cross_validation(model, dataset, comment='test_batch', batch_size=512,
                            num_epochs=500, dropout=0.3, lr=1e-8, weight_decay=1e-2,
