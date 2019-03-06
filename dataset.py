@@ -17,18 +17,23 @@ from data.data_utils import concat_adj_to_node, \
 
 class MmDataset(InMemoryDataset):
     def __init__(self, root, name, transform=None, pre_transform=None,
-                 pre_concat=None, scale='60', r=3):
+                 pre_concat=None, scale='60', r=3, batch_size=1):
         self.name = name
         self.pre_concat = pre_concat
         self.pre_transform = pre_transform
         self.scale = scale
         self.r = r
+        self.batch_size = batch_size
         super(MmDataset, self).__init__(root, transform, pre_transform)
         self.data, self.slices = torch.load(self.processed_paths[0])
 
         # check if flag was added to edge_index
         if self.data.edge_index[0][-1] < self.data.num_nodes - 1:
             self.add_flag_to_edge_index()
+
+        # collate in dataloader is slooooow
+        if self.batch_size > 1:
+            self._collate()
 
     @property
     def raw_file_names(self):
@@ -90,6 +95,16 @@ class MmDataset(InMemoryDataset):
 
         torch.save((self.data, self.slices), self.processed_paths[0])
 
+    def _collate(self):
+        """
+        Collate the graphs in the dataset before passing it to dataloader,
+        to make it faster to build a _DataLoaderIter
+        :return:
+        """
+        keys = self.slices.keys()
+        for key in keys:
+            self.slices[key] = self.slices[key][::self.batch_size]
+
     def collate_fn(self, data_list):
         """
         for Pytorch DataLoader
@@ -102,6 +117,7 @@ class MmDataset(InMemoryDataset):
 
     def collate_fn_multi_gpu(self, device_count, data_list):
         """
+        TODO: Deprecated
         for Pytorch DataLoader
         Usage: partial(collate_fn_multi_gpu, device_count)(data_list)
         :param data_list:
