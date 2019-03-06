@@ -15,7 +15,7 @@ from utils import get_model_log_dir
 def train_cross_validation(model_cls, dataset, dropout=0, lr=1e-3,
                            weight_decay=1e-2, num_epochs=200, n_splits=5,
                            use_gpu=True, multi_gpus=True, comment='',
-                           tb_service_loc=None):
+                           tb_service_loc=None, batch_size=1):
     """
 
     :param model_cls: pytorch Module cls
@@ -29,12 +29,13 @@ def train_cross_validation(model_cls, dataset, dropout=0, lr=1e-3,
     :param multi_gpus: bool
     :param comment: comment in the logs, to filter runs in tensorboard
     :param tb_service_loc: tensorboard service location
+    :param batch_size: make sure your dataset and model support mini-batch setting
     :return:
     """
     saved_args = locals()
     model_name = model_cls.__name__
     # sample data (torch_geometric Data) to construct model
-    sample_data = dataset.datas[0]
+    sample_data = dataset.__getitem__(0)
     device = torch.device('cuda' if torch.cuda.is_available() and use_gpu else 'cpu')
     device_count = torch.cuda.device_count() if multi_gpus else 1
     if device_count > 1:
@@ -48,7 +49,9 @@ def train_cross_validation(model_cls, dataset, dropout=0, lr=1e-3,
         print("Please set up TensorBoard")
 
     criterion = nn.CrossEntropyLoss()
-    dataloader = DataLoader(dataset, shuffle=True, batch_size=device_count)
+    dataloader = DataLoader(dataset, shuffle=True,
+                            collate_fn=dataset.collate_fn,
+                            batch_size=device_count * batch_size)
 
     print("Training {0} {1} models for cross validation...".format(n_splits, model_name))
 
@@ -92,15 +95,14 @@ def train_cross_validation(model_cls, dataset, dropout=0, lr=1e-3,
                 running_nll_loss = 0.0
                 epoch_yhat_0, epoch_yhat_1 = np.array([]), np.array([])
 
-                for i, batch in enumerate(dataloader):
-                    x, edge_index, edge_attr, adj, y = batch
+                for data in dataloader:
 
                     if use_gpu:
-                        x, edge_index, edge_attr, adj, y = \
-                            Variable(x.cuda()), Variable(edge_index.cuda()), Variable(edge_attr.cuda()), Variable(
-                                adj.cuda()), Variable(y.cuda())
+                        for key in data.keys:
+                            data[key] = Variable(data[key].cuda())
 
-                    y_hat, reg = model(x, edge_index, edge_attr, adj)
+                    y = data.y
+                    y_hat, reg = model(data)
                     loss = criterion(y_hat, y)
                     total_loss = (loss + reg).mean()
 

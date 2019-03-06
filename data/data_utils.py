@@ -266,7 +266,8 @@ def read_mm_data(subject_list, fsl_subjects_dir_path, fs_subjects_dir_path,
             if osp.exists(subject_tmp_file_path):
                 done_subject.append(subject)
     job_list = [subject for subject in subject_list if subject not in done_subject]
-    print("Processing Job list: {}".format(len(job_list)), job_list)
+    print("Process MM data job list: {}".format(len(job_list)), job_list)
+    print("Set force=True or delete tmp file to re-process")
 
     if len(job_list) > 0:
         correlation_measure = ConnectivityMeasure(kind='correlation')
@@ -290,8 +291,9 @@ def read_mm_data(subject_list, fsl_subjects_dir_path, fs_subjects_dir_path,
     return data_list
 
 
-def normalize_node_feature(x):
+def normalize_node_feature_node_wise(x, **kwargs):
     """
+    Node wise norm
     Normalize node feature for node feature matrix x
     :param x: Node feature matrix with shape [num_nodes, num_node_features]
     :return:
@@ -312,6 +314,26 @@ def normalize_node_feature(x):
     return x
 
 
+def normalize_node_feature_sample_wise(x, N):
+    """
+    Sample wise norm
+    Normalize node feature for node feature matrix x
+    :param N: number of samples
+    :param x: Node feature matrix with shape [num_nodes, num_node_features]
+    :return:
+    """
+    s1, s2 = x.shape
+    x = x.view(N, -1)
+    mean_tensor = torch.mean(x, dim=0)
+    std_tensor = torch.std(x, dim=0) + 1e-6
+
+    # z-score norm
+    x = (x - mean_tensor) / std_tensor
+
+    x = x.view(s1, s2)
+    return x
+
+
 def edge_to_adj(edge_index, edge_attr, num_nodes):
     """
     Return:
@@ -325,16 +347,30 @@ def edge_to_adj(edge_index, edge_attr, num_nodes):
     return adj
 
 
-def concat_adj_to_node(data):
+def _concat_adj_to_node(data):
     """
     Note: for a single graph
     :param data:
     :return:
     """
+    # TODO: OSError: [Errno 24] Too many open files
+    # TODO: Solution: ```$ ulimit -n 65535```
     adj = edge_to_adj(data.edge_index, data.edge_attr, data.num_nodes)
     adj = adj.view(data.num_nodes, -1)
     data.x = torch.cat([data.x, adj], dim=1)
     return data
+
+
+def concat_adj_to_node(data_list):
+    """
+    Note: for a list of graph
+    :param data_list:
+    :return:
+    """
+    p = Pool()
+    new_data_list = p.map(_concat_adj_to_node, data_list)
+    p.close()
+    return new_data_list
 
 
 if __name__ == '__main__':

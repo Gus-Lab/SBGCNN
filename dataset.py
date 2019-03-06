@@ -1,3 +1,5 @@
+from itertools import repeat
+
 from torch.utils.data import Dataset
 from torch_geometric.data import Data, InMemoryDataset
 import codecs
@@ -8,19 +10,23 @@ import os.path as osp
 from os.path import join
 from tqdm import tqdm
 
-from data.data_utils import concat_adj_to_node, normalize_node_feature
+from data.data_utils import concat_adj_to_node, \
+    normalize_node_feature_node_wise, \
+    normalize_node_feature_sample_wise
 
 
 class MmmDataset(InMemoryDataset):
-    def __init__(self, root, name, transform=None, normalize=None, pre_transform=None,
-                 concat=None, scale='60', r=3):
+    def __init__(self, root, name, transform=None, pre_transform=None,
+                 pre_concat=None, scale='60', r=3):
         self.name = name
-        self.concat = concat
-        self.normalize = normalize
+        self.pre_concat = pre_concat
+        self.pre_transform = pre_transform
         self.scale = scale
         self.r = r
         super(MmmDataset, self).__init__(root, transform, pre_transform)
         self.data, self.slices = torch.load(self.processed_paths[0])
+        if self.data.edge_index[0][-1] < self.data.num_nodes - 1:
+            self.add_flag_to_edge_index()
 
     @property
     def raw_file_names(self):
@@ -52,17 +58,45 @@ class MmmDataset(InMemoryDataset):
         self.data, self.slices = self.collate(data_list)
 
         # normalize for anatomical properties
-        self.data.x = self.normalize(self.data.x) if self.normalize is not None else self.data.x
+        self.data.x = self.pre_transform(self.data.x,
+                                         N=len(data_list)) if self.pre_transform is not None else self.data.x
         # concat adj to node feature
-        if self.concat is not None:
-            data_list = [self.__getitem__(i) for i in range(self.__len__())]
-            for i, data in tqdm(enumerate(data_list), desc='concat'):
-                data_list[i] = self.concat(data)
+        if self.pre_concat is not None:
+            # this will take a long time...
+            # python for-loop is incredibly slow, even with multi-processing
+            data_list = self.pre_concat([self.__getitem__(i) for i in range(self.__len__())])
             # normalize again for adj
             self.data, self.slices = self.collate(data_list)
-            self.data.x = self.normalize(self.data.x) if self.normalize is not None else self.data.x
+            self.data.x = self.pre_transform(self.data.x, N=len(data_list)) \
+                if self.pre_transform is not None else self.data.x
 
         torch.save((self.data, self.slices), self.processed_paths[0])
+
+    def add_flag_to_edge_index(self):
+        """
+        recursively add flag(integer) to edge_index to concatenate graphs to a bigger graph (batch)
+        refer: https://rusty1s.github.io/pytorch_scatter/build/html/index.html
+        :return:
+        """
+        dim = self.data.cat_dim('edge_index', self.data.edge_index)
+        for idx in range(self.__len__()):
+            slices = self.slices['edge_index']
+            s = list(repeat(slice(None), self.data.edge_index.dim()))
+            s[dim] = slice(slices[idx], slices[idx + 1])
+            flag = self.slices['x'][idx]
+            self.data.edge_index[s] += flag
+
+        torch.save((self.data, self.slices), self.processed_paths[0])
+
+    def collate_fn(self, data_list):
+        """
+        for Pytorch DataLoader
+        Duang a batch of graph in to a BIG graph
+        :param data_list:
+        :return:
+        """
+        data, slices = self.collate(data_list)
+        return data
 
     def __repr__(self):
         return '{}()'.format(self.name)
@@ -70,8 +104,8 @@ class MmmDataset(InMemoryDataset):
 
 if __name__ == '__main__':
     mmm = MmmDataset('data/', 'MM',
-                     normalize=normalize_node_feature,
-                     concat=concat_adj_to_node)
+                     pre_transform=normalize_node_feature_sample_wise,
+                     pre_concat=concat_adj_to_node)
     mmm.__getitem__(0)
     print()
 
