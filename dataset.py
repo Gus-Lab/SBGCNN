@@ -10,26 +10,27 @@ import os.path as osp
 from os.path import join
 from tqdm import tqdm
 
-from data.data_utils import concat_adj_to_node, \
-    normalize_node_feature_node_wise, \
-    normalize_node_feature_sample_wise
+from data.data_utils import concat_adj_to_node_feature, \
+    set_missing_node_feature, \
+    normalize_node_feature_sample_wise, \
+    normalize_node_feature_sample_wise_transform, \
+    phrase_subject_list
 
 
 class MmDataset(InMemoryDataset):
     def __init__(self, root, name, transform=None, pre_transform=None,
-                 pre_concat=None, scale='60', r=3, batch_size=1):
+                 pre_concat=None, pre_set_missing=None, scale='60', r=3, batch_size=1):
         self.name = name
         self.pre_concat = pre_concat
         self.pre_transform = pre_transform
+        self.pre_set_missing = pre_set_missing
         self.scale = scale
+        if scale == '60':
+            self.num_nodes = 129
         self.r = r
         self.batch_size = batch_size
         super(MmDataset, self).__init__(root, transform, pre_transform)
         self.data, self.slices = torch.load(self.processed_paths[0])
-
-        # check if flag was added to edge_index
-        if self.data.edge_index[0][-1] < self.data.num_nodes - 1:
-            self.add_flag_to_edge_index()
 
         # collate in dataloader is slooooow
         if self.batch_size > 1:
@@ -53,6 +54,9 @@ class MmDataset(InMemoryDataset):
         """
         subject_list = [line.strip() for line in
                         codecs.open(osp.join(self.raw_dir, self.raw_file_names[0]), 'r').readlines()]
+        subject_list = phrase_subject_list(subject_list)
+
+        print("Reading MM data...")
         data_list = read_mm_data(subject_list=subject_list,
                                  fsl_subjects_dir_path=join(self.raw_dir, self.raw_file_names[1]),
                                  fs_subjects_dir_path=join(self.raw_dir, self.raw_file_names[2]),
@@ -61,21 +65,24 @@ class MmDataset(InMemoryDataset):
                                  tmp_dir_path=join(self.raw_dir, 'tmp'),
                                  scale=self.scale,
                                  r=self.r)
-        # set class attribute for normalization pipeline
         self.data, self.slices = self.collate(data_list)
 
-        # normalize for anatomical properties
-        self.data.x = self.pre_transform(self.data.x,
-                                         N=len(data_list)) if self.pre_transform is not None else self.data.x
+        # set missing node feature for subcortical regions
+        print("set missing data...")
+        self.data.x = self.pre_set_missing(self.data.x) if self.pre_set_missing is not None else self.data.x
+
         # concat adj to node feature
         if self.pre_concat is not None:
+            print("concatenating adj to node feature")
             # this will take a long time...
             # python for-loop is incredibly slow, even with multi-processing
             data_list = self.pre_concat([self.__getitem__(i) for i in range(self.__len__())])
-            # normalize again for adj
-            self.data, self.slices = self.collate(data_list)
-            self.data.x = self.pre_transform(self.data.x, N=len(data_list)) \
-                if self.pre_transform is not None else self.data.x
+
+        # normalization
+        print("Normalizing node attributes")
+        self.data, self.slices = self.collate(data_list)
+        self.data.x = self.pre_transform(self.data.x, N=len(data_list)) \
+            if self.pre_transform is not None else self.data.x
 
         torch.save((self.data, self.slices), self.processed_paths[0])
 
@@ -87,13 +94,15 @@ class MmDataset(InMemoryDataset):
         """
         dim = self.data.cat_dim('edge_index', self.data.edge_index)
         for idx in range(self.__len__()):
+            i = 0
             slices = self.slices['edge_index']
             s = list(repeat(slice(None), self.data.edge_index.dim()))
             s[dim] = slice(slices[idx], slices[idx + 1])
-            flag = self.slices['x'][idx]
+            flag = i * self.num_nodes
             self.data.edge_index[s] += flag
-
-        torch.save((self.data, self.slices), self.processed_paths[0])
+            i += 1
+            if i == self.batch_size:
+                i = 0
 
     def _collate(self):
         """
@@ -101,6 +110,7 @@ class MmDataset(InMemoryDataset):
         to make it faster to build a _DataLoaderIter
         :return:
         """
+        self.add_flag_to_edge_index()
         keys = self.slices.keys()
         for key in keys:
             self.slices[key] = self.slices[key][::self.batch_size]
@@ -146,8 +156,9 @@ class MmDataset(InMemoryDataset):
 
 if __name__ == '__main__':
     mmm = MmDataset('data/', 'MM',
-                    pre_transform=normalize_node_feature_sample_wise,
-                    pre_concat=concat_adj_to_node)
+                    pre_transform=normalize_node_feature_sample_wise_transform,
+                    pre_concat=concat_adj_to_node_feature,
+                    pre_set_missing=set_missing_node_feature)
     mmm.__getitem__(0)
     print()
 

@@ -17,6 +17,7 @@ from nilearn.input_data import NiftiLabelsMasker
 from torch_geometric.data import Data
 
 from torch_sparse import coalesce
+from scipy.stats import rankdata, norm
 
 
 class NumpyEncoder(json.JSONEncoder):
@@ -28,6 +29,20 @@ class NumpyEncoder(json.JSONEncoder):
         if isinstance(obj, np.ndarray):
             return obj.tolist()
         return json.JSONEncoder.default(self, obj)
+
+
+def phrase_subject_list(all_subject_list):
+    """
+    To avoid mixing subjects in train and validation
+    :param all_subject_list:
+    :return:
+    """
+    all_subject_list.sort()
+    ids = [subject[:4] for subject in all_subject_list]
+    one_and_three_ids = [subject for subject in ids if ids.count(subject) == 2]
+    one_and_threes = [subject for subject in all_subject_list if subject[:4] in one_and_three_ids]
+    singles = [subject for subject in all_subject_list if subject[:4] not in one_and_three_ids]
+    return one_and_threes + singles
 
 
 def read_fs_node_feature(subject, fs_subjects_dir_path, scale, hemi):
@@ -291,10 +306,9 @@ def read_mm_data(subject_list, fsl_subjects_dir_path, fs_subjects_dir_path,
     return data_list
 
 
-def normalize_node_feature_node_wise(x, **kwargs):
+def set_missing_node_feature(x, **kwargs):
     """
-    Node wise norm
-    Normalize node feature for node feature matrix x
+    set missing data for subcortical regions
     :param x: Node feature matrix with shape [num_nodes, num_node_features]
     :return:
     """
@@ -302,14 +316,10 @@ def normalize_node_feature_node_wise(x, **kwargs):
     zero_tensor = torch.tensor([0], dtype=torch.float)
     mask = 1 - torch.eq(intermediate_tensor, zero_tensor)  # non-zero vectors
     mean_tensor = torch.mean(x[mask], dim=0)
-    std_tensor = torch.std(x[mask], dim=0)
 
     # set missing value (SubCortical)
     mask = torch.eq(intermediate_tensor, zero_tensor)  # zero vectors
     x[mask] = mean_tensor
-
-    # z-score norm
-    x = (x - mean_tensor) / std_tensor
 
     return x
 
@@ -329,6 +339,25 @@ def normalize_node_feature_sample_wise(x, N):
 
     # z-score norm
     x = (x - mean_tensor) / std_tensor
+
+    x = x.view(s1, s2)
+    return x
+
+
+def normalize_node_feature_sample_wise_transform(x, N):
+    """
+    Transform to gaussian distribution
+    TODO: optimization
+    :param x:
+    :param N:
+    :return:
+    """
+    s1, s2 = x.shape
+    x = x.view(N, -1)
+
+    for i in range(x.shape[1]):
+        # transform to gaussian
+        x[:, i] = torch.tensor(norm.ppf(rankdata(x[:, i]) / (len(x[:, i]) + 1)))
 
     x = x.view(s1, s2)
     return x
@@ -361,7 +390,7 @@ def _concat_adj_to_node(data):
     return data
 
 
-def concat_adj_to_node(data_list):
+def concat_adj_to_node_feature(data_list):
     """
     Note: for a list of graph
     :param data_list:
