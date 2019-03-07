@@ -14,7 +14,8 @@ class Baseline(torch.nn.Module):
         self.num_features = data.num_features
         self.B = data.y.shape[0]
         # self.conv1d = nn.Conv1d(1, 1, kernel_size=self.num_features, stride=self.num_features)
-        self.emb1 = nn.Linear(self.num_features, 1)
+        self.emb1 = nn.Linear(self.num_features - 7, 1)  # for adj
+        self.emb2 = nn.Linear(8, 1)
         self.fc1 = nn.Linear(int(self.num_nodes / self.B), 12)
         self.drop1 = nn.Dropout(dropout)
         # self.fc2 = nn.Linear(8, 8)
@@ -31,7 +32,8 @@ class Baseline(torch.nn.Module):
         B = data.y.shape[0]
         # x = x.view(B, 1, -1)
         # x = self.conv1d(x)
-        x = self.emb1(x)
+        x = torch.cat([self.emb1(x[:, 7:]), x[:, :7]], dim=-1)
+        x = self.emb2(x)
         x = x.view(B, -1)
         x = F.elu(self.drop1(self.fc1(x)))
         # x = F.elu(self.drop2(self.fc2(x)))

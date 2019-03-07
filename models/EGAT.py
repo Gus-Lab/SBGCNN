@@ -1,15 +1,67 @@
 import torch
 import torch.nn.functional as F
 from torch import nn
-from nn import MEGATConv
+from nn import MEGATConv, EGATConv
+
+
+class _EGATConv(torch.nn.Module):
+    def __init__(self,
+                 in_channels,
+                 out_channels,
+                 dropout
+                 ):
+        super(_EGATConv, self).__init__()
+        self.in_channels = in_channels
+        self.out_channels = out_channels
+        self.dropout = dropout
+
+        self.conv1 = MEGATConv(in_channels, out_channels, dropout=dropout)
+        self.conv2 = MEGATConv(out_channels, out_channels, dropout=dropout)
+
+    def forward(self, x, edge_index, edge_attr):
+        x, edge_index, e = self.conv1(x, edge_index, edge_attr)
+        x, edge_index, e = self.conv2(x, edge_index, e)
+
+        return x
 
 
 class EGAT(torch.nn.Module):
+    def __init__(self, data, dropout=0):
+        super(EGAT, self).__init__()
+        self.num_features = data.num_features
+        self.num_nodes = data.num_nodes
+        self.edge_attr_dim = data.edge_attr.shape[-1]
+        self.B = data.y.shape[0]
+
+        self.egatconv_channel1 = _EGATConv(self.num_features, 10, dropout)
+        self.egatconv_channel2 = _EGATConv(self.num_features, 10, dropout)
+        self.egatconv_channel3 = _EGATConv(self.num_features, 10, dropout)
+
+        self.fc1 = nn.Linear(int(3 * 10 * self.num_nodes / self.B), 6)
+        self.drop1 = nn.Dropout(dropout)
+        self.fc2 = nn.Linear(6, 2)
+
+    def forward(self, data):
+        x, edge_index, edge_attr, y = data.x, data.edge_index, data.edge_attr, data.y
+        B = y.shape[0]
+
+        x = torch.cat([
+            self.egatconv_channel1(x, edge_index, edge_attr[:, 0].view(-1, 1)),
+            self.egatconv_channel2(x, edge_index, edge_attr[:, 1].view(-1, 1)),
+            self.egatconv_channel3(x, edge_index, edge_attr[:, 2].view(-1, 1))
+        ])
+        x = x.view(B, -1)
+        x = F.relu(self.drop1(self.fc1(x)))
+        x = self.fc2(x)
+        return x
+
+
+class MEGAT(torch.nn.Module):
     def __init__(self,
                  data,
                  dropout=0
                  ):
-        super(EGAT, self).__init__()
+        super(MEGAT, self).__init__()
         self.dropout = dropout
         self.num_features = data.num_features
         self.num_nodes = data.num_nodes

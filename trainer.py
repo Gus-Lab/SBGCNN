@@ -12,7 +12,7 @@ from torch.autograd import Variable
 from torch.utils.data import DataLoader
 from tqdm import tqdm_notebook
 
-from data.data_utils import normalize_node_feature_sample_wise, concat_adj_to_node
+from data.data_utils import normalize_node_feature_sample_wise, concat_adj_to_node_feature
 from dataset import MmDataset
 from models import Baseline
 from utils import get_model_log_dir
@@ -71,19 +71,20 @@ def train_cross_validation(model_cls, dataset, dropout=0.0, lr=1e-3,
     criterion = nn.CrossEntropyLoss()
 
     print("Training {0} {1} models for cross validation...".format(n_splits, model_name))
-    folds, fold = KFold(n_splits=n_splits, shuffle=False), 0
+    folds, fold = KFold(n_splits=n_splits, shuffle=True), 0
     for train_idx, test_idx in tqdm_notebook(folds.split(list(range(dataset.__len__())),
                                                          list(range(dataset.__len__()))),
                                              desc='models', leave=False):
+        print(train_idx, test_idx)
         fold += 1
         print("creating dataloader tor fold {}".format(fold))
         with timeit(name='create dataloader'):
             model = model_cls(sample_data, dropout=dropout)
 
-            # collate_fn = partial(dataset.collate_fn_multi_gpu, device_count) if multi_gpus else dataset.collate_fn
+            collate_fn = partial(dataset.collate_fn_multi_gpu, device_count) if multi_gpus else dataset.collate_fn
             train_dataloader = DataLoader(dataset.set_active_data(train_idx),
                                           shuffle=True,
-                                          collate_fn=lambda x: x[0],  # collate when initializing dataset
+                                          collate_fn=lambda x: x[0],
                                           batch_size=1,
                                           num_workers=num_workers,
                                           pin_memory=pin_memory)
@@ -192,7 +193,7 @@ def train_cross_validation(model_cls, dataset, dropout=0.0, lr=1e-3,
 if __name__ == "__main__":
     dataset = MmDataset('data/', 'MM',
                         pre_transform=normalize_node_feature_sample_wise,
-                        pre_concat=concat_adj_to_node,
+                        pre_concat=concat_adj_to_node_feature,
                         batch_size=1000)
     model = Baseline
     train_cross_validation(model, dataset, comment='test_batch', batch_size=512,
