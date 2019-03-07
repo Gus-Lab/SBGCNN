@@ -183,7 +183,6 @@ class MEGATConv(torch.nn.Module):
         alpha = torch.mul(alpha, edge_attr.float())
         alpha = F.normalize(alpha, p=1, dim=1)
 
-        print(alpha.shape)
         # Sample attention coefficients stochastically.
         dropout = self.dropout if self.training else 0
         alpha = F.dropout(alpha, p=dropout, training=True)

@@ -71,7 +71,7 @@ def train_cross_validation(model_cls, dataset, dropout=0.0, lr=1e-3,
     criterion = nn.CrossEntropyLoss()
 
     print("Training {0} {1} models for cross validation...".format(n_splits, model_name))
-    folds, fold = KFold(n_splits=n_splits, shuffle=True), 0
+    folds, fold = KFold(n_splits=n_splits, shuffle=False), 0
     for train_idx, test_idx in tqdm_notebook(folds.split(list(range(dataset.__len__())),
                                                          list(range(dataset.__len__()))),
                                              desc='models', leave=False):

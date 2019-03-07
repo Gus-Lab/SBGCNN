@@ -19,8 +19,8 @@ class _EGATConv(torch.nn.Module):
         self.conv2 = MEGATConv(out_channels, out_channels, dropout=dropout)
 
     def forward(self, x, edge_index, edge_attr):
-        x, edge_index, e = self.conv1(x, edge_index, edge_attr)
-        x, edge_index, e = self.conv2(x, edge_index, e)
+        x, e = self.conv1(x, edge_index, edge_attr)
+        x, e = self.conv2(x, edge_index, e)
 
         return x
 
@@ -53,7 +53,9 @@ class EGAT(torch.nn.Module):
         x = x.view(B, -1)
         x = F.relu(self.drop1(self.fc1(x)))
         x = self.fc2(x)
-        return x
+
+        reg = torch.tensor([0], dtype=torch.float, device=x.device)
+        return x, reg
 
 
 class MEGAT(torch.nn.Module):
