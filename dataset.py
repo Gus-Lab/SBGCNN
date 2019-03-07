@@ -93,8 +93,8 @@ class MmDataset(InMemoryDataset):
         :return:
         """
         dim = self.data.cat_dim('edge_index', self.data.edge_index)
+        i = 0
         for idx in range(self.__len__()):
-            i = 0
             slices = self.slices['edge_index']
             s = list(repeat(slice(None), self.data.edge_index.dim()))
             s[dim] = slice(slices[idx], slices[idx + 1])
@@ -158,7 +158,8 @@ if __name__ == '__main__':
     mmm = MmDataset('data/', 'MM',
                     pre_transform=normalize_node_feature_sample_wise_transform,
                     pre_concat=concat_adj_to_node_feature,
-                    pre_set_missing=set_missing_node_feature)
+                    pre_set_missing=set_missing_node_feature,
+                    batch_size=400)
     mmm.__getitem__(0)
     print()
 
