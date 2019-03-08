@@ -52,7 +52,7 @@ def train_cross_validation(model_cls, dataset, dropout=0.0, lr=1e-3,
     saved_args = locals()
     model_name = model_cls.__name__
     # sample data (torch_geometric Data) to construct model
-    sample_data = dataset.__getitem__(0)
+    sample_data = dataset._get(0)
     if not cuda_device:
         device = torch.device('cuda' if torch.cuda.is_available() and use_gpu else 'cpu')
     else:
@@ -75,7 +75,6 @@ def train_cross_validation(model_cls, dataset, dropout=0.0, lr=1e-3,
     for train_idx, test_idx in tqdm_notebook(folds.split(list(range(dataset.__len__())),
                                                          list(range(dataset.__len__()))),
                                              desc='models', leave=False):
-        print(train_idx, test_idx)
         fold += 1
         print("creating dataloader tor fold {}".format(fold))
         with timeit(name='create dataloader'):
@@ -84,14 +83,12 @@ def train_cross_validation(model_cls, dataset, dropout=0.0, lr=1e-3,
             collate_fn = partial(dataset.collate_fn_multi_gpu, device_count) if multi_gpus else dataset.collate_fn
             train_dataloader = DataLoader(dataset.set_active_data(train_idx),
                                           shuffle=True,
-                                          collate_fn=lambda x: x[0],
-                                          batch_size=1,
+                                          batch_size=batch_size * device_count,
                                           num_workers=num_workers,
                                           pin_memory=pin_memory)
             test_dataloader = DataLoader(dataset.set_active_data(test_idx),
                                          shuffle=True,
-                                         collate_fn=lambda x: x[0],
-                                         batch_size=1,
+                                         batch_size=batch_size * device_count,
                                          num_workers=num_workers,
                                          pin_memory=pin_memory)
 
@@ -133,17 +130,16 @@ def train_cross_validation(model_cls, dataset, dropout=0.0, lr=1e-3,
                 running_nll_loss = 0.0
                 epoch_yhat_0, epoch_yhat_1 = torch.tensor([]), torch.tensor([])
 
-                for data in tqdm_notebook(dataloader, desc=phase, leave=False):
+                for x, edge_index, edge_attr, y in tqdm_notebook(dataloader, desc=phase, leave=False):
 
-                    if use_gpu and not multi_gpus:  # assign tensor to gpu
-                        for key in data.keys:
-                            data[key] = Variable(data[key].to(device))
-                            # data[key] = data[key].to(device)
+                    if use_gpu and not multi_gpus:
+                        x, edge_index, edge_attr, y = \
+                            x.to(device), edge_index.to(device), edge_attr.to(device), y.to(device)
 
-                    y = data.y if not multi_gpus else torch.cat([d.y for d in data])
-                    y_hat, reg = model(data)
+                    y_hat, reg = model(x, edge_index, edge_attr, y)
+                    y = y.view(-1).cuda() if multi_gpus else y
                     loss = criterion(y_hat, y)
-                    total_loss = loss + reg
+                    total_loss = (loss + reg).mean()
 
                     if phase == 'train':
                         optimizer.zero_grad()

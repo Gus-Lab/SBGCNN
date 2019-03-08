@@ -179,7 +179,7 @@ def slice_time_series(time_series, stride=100, length=250):
     unknown_rest_blocks = []
     for i in itertools.count():
         start = math.ceil((32 * 11 + stride * i) / 3)
-        end = start + math.floor((length + stride * i) / 3)
+        end = math.floor((32 * 11 + length + stride * i) / 3)
         if end > len(time_series):
             break
         unknown_rest_blocks.append(time_series[start:end])
@@ -199,6 +199,15 @@ def resample_mm(time_series, r):
     rest_blocks = [np.concatenate(rest_block, axis=0) for rest_block in itertools.combinations(rest_blocks, r)]
     ip_blocks = [np.concatenate(ip_block, axis=0) for ip_block in itertools.combinations(ip_blocks, r)]
     return list(itertools.product(rest_blocks, ip_blocks, unknown_rest_blocks))
+
+
+def remove_least_k_percent(adj, k=0.1, fill_value=1e-10):
+    sorted_index = np.argsort(adj, axis=None)
+    index_to_remove = sorted_index[:int(len(sorted_index) * k)]
+    num_nodes = len(adj)
+    for index in index_to_remove:
+        adj[int(index / num_nodes)][index % num_nodes] = fill_value
+    return adj
 
 
 def create_and_save_data(scale, fs_subjects_dir_path, atlas_sheet_path,
@@ -229,20 +238,22 @@ def create_and_save_data(scale, fs_subjects_dir_path, atlas_sheet_path,
     for combo in combo_list:  # 3 channels in 1 comb (RESTBLOCK IPBLOCK UNKNOWN)
         corr_list = [correlation_measure.fit_transform([cm])[0] for cm in combo]
         # convert correlation to distance between [0, 1]
-        corr_list = [1 - np.sqrt((1 - corr) / 2) for corr in corr_list]
+        # corr_list = [1 - np.sqrt((1 - corr) / 2) for corr in corr_list]
+        corr_list = [remove_least_k_percent(np.abs(corr), k=0.4) for corr in corr_list]  # abs
+        all_corr = np.stack(corr_list, axis=-1)
+
         # make the graph fully-connected for spectrum methods
-        for i, corr in enumerate(corr_list):
-            corr[corr <= 0] = 1e-6
-            assert np.count_nonzero(corr) == corr.shape[0] * corr.shape[1]
-            corr_list[i] = corr
+        # for i, corr in enumerate(corr_list):
+        #     corr[corr <= 0] = 1e-6
+        #     assert np.count_nonzero(corr) == corr.shape[0] * corr.shape[1]
+        #     corr_list[i] = corr
 
         # create torch_geometric Data
-        G = nx.from_numpy_array(corr_list[0])
+        G = nx.from_numpy_array(np.ones_like(corr_list[0]))
         A = nx.to_scipy_sparse_matrix(G)
         adj = A.tocoo()
         edge_index = np.stack([adj.row, adj.col])
         edge_attr = np.zeros((len(adj.row), len(corr_list)))
-        all_corr = np.stack(corr_list, axis=-1)
         for i in range(len(adj.row)):
             edge_attr[i] = all_corr[adj.row[i], adj.col[i]]
 
@@ -250,6 +261,7 @@ def create_and_save_data(scale, fs_subjects_dir_path, atlas_sheet_path,
                     edge_index=torch.tensor(edge_index, dtype=torch.long),
                     edge_attr=torch.tensor(edge_attr, dtype=torch.float),
                     y=torch.tensor([1]) if subject.startswith('2') else torch.tensor([0]))
+        data.adj = torch.tensor(all_corr, dtype=torch.float)
         data_list.append(data)
 
     subject_tmp_file_path = osp.join(tmp_dir_path, '{}.pickle'.format(subject))
@@ -282,7 +294,6 @@ def read_mm_data(subject_list, fsl_subjects_dir_path, fs_subjects_dir_path,
                 done_subject.append(subject)
     job_list = [subject for subject in subject_list if subject not in done_subject]
     print("Process MM data job list: {}".format(len(job_list)), job_list)
-    print("Set force=True or delete tmp file to re-process")
 
     if len(job_list) > 0:
         correlation_measure = ConnectivityMeasure(kind='correlation')
@@ -384,8 +395,8 @@ def _concat_adj_to_node(data):
     """
     # TODO: OSError: [Errno 24] Too many open files
     # TODO: Solution: ```$ ulimit -n 65535```
-    adj = edge_to_adj(data.edge_index, data.edge_attr, data.num_nodes)
-    adj = adj.view(data.num_nodes, -1)
+    # adj = edge_to_adj(data.edge_index, data.edge_attr, data.num_nodes)
+    adj = data.adj.sum(dim=-1)
     data.x = torch.cat([data.x, adj], dim=1)
     return data
 
@@ -402,14 +413,19 @@ def concat_adj_to_node_feature(data_list):
     return new_data_list
 
 
+def concat_adj_to_node_feature_dataset(dataset):
+    pass
+
+
 if __name__ == '__main__':
     nnode_attr_array = to_node_attr_array('3044_1', '/data_59/huze/Fs.subjects', "/data_59/huze/Lausanne/LABELS.xlsx",
                                           '60')
     ttime_series = to_time_series('3044_1', '/data_59/huze/MRS/FEAT.linear', '/data_59/huze/Lausanne', '60')
+    slice_time_series(ttime_series)
     ddata_list = read_mm_data(['3044_1'], '/data_59/huze/MRS/FEAT.linear',
                               '/data_59/huze/Fs.subjects',
                               "/data_59/huze/Lausanne/LABELS.xlsx", '/data_59/huze/Lausanne', '60',
-                              '/data_59/huze/MDEGCNN/data/raw/tmp', r=3,
-                              force=False)
+                              '/data_59/huze/MDEGCNN/data/raw/tmp', r=4,
+                              force=True)
     print(ddata_list)
     print("Done!")

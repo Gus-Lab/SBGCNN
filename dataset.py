@@ -19,7 +19,7 @@ from data.data_utils import concat_adj_to_node_feature, \
 
 class MmDataset(InMemoryDataset):
     def __init__(self, root, name, transform=None, pre_transform=None,
-                 pre_concat=None, pre_set_missing=None, scale='60', r=3, batch_size=1):
+                 pre_concat=None, pre_set_missing=None, scale='60', r=3, force=False, batch_size=1):
         self.name = name
         self.pre_concat = pre_concat
         self.pre_transform = pre_transform
@@ -28,6 +28,7 @@ class MmDataset(InMemoryDataset):
         if scale == '60':
             self.num_nodes = 129
         self.r = r
+        self.force = force
         self.batch_size = batch_size
         super(MmDataset, self).__init__(root, transform, pre_transform)
         self.data, self.slices = torch.load(self.processed_paths[0])
@@ -38,11 +39,13 @@ class MmDataset(InMemoryDataset):
 
     @property
     def raw_file_names(self):
+        # mc_filtered_subjects test_subject
         return ['mc_filtered_subjects', 'FEAT.linear/', 'Fs.subjects/', 'LABELS.xlsx', 'Lausanne/']
 
     @property
     def processed_file_names(self):
-        return 'data.pt'
+        # data_ex.pt is with adj concatenated to node feature
+        return 'data_ex.pt'
 
     def download(self):
         return
@@ -64,7 +67,8 @@ class MmDataset(InMemoryDataset):
                                  atlas_dir_path=join(self.raw_dir, self.raw_file_names[4]),
                                  tmp_dir_path=join(self.raw_dir, 'tmp'),
                                  scale=self.scale,
-                                 r=self.r)
+                                 r=self.r,
+                                 force=self.force)
         self.data, self.slices = self.collate(data_list)
 
         # set missing node feature for subcortical regions
@@ -76,7 +80,7 @@ class MmDataset(InMemoryDataset):
             print("concatenating adj to node feature")
             # this will take a long time...
             # python for-loop is incredibly slow, even with multi-processing
-            data_list = self.pre_concat([self.__getitem__(i) for i in range(self.__len__())])
+            data_list = self.pre_concat([self._get(i) for i in range(self.__len__())])
 
         # normalization
         print("Normalizing node attributes")
@@ -85,6 +89,26 @@ class MmDataset(InMemoryDataset):
             if self.pre_transform is not None else self.data.x
 
         torch.save((self.data, self.slices), self.processed_paths[0])
+
+    def get(self, idx):
+        data = Data()
+        for key in self.data.keys:
+            item, slices = self.data[key], self.slices[key]
+            s = list(repeat(slice(None), item.dim()))
+            s[self.data.cat_dim(key, item)] = slice(slices[idx],
+                                                    slices[idx + 1])
+            data[key] = item[s]
+        return data.x, data.edge_index, data.edge_attr, data.y
+
+    def _get(self, idx):
+        data = Data()
+        for key in self.data.keys:
+            item, slices = self.data[key], self.slices[key]
+            s = list(repeat(slice(None), item.dim()))
+            s[self.data.cat_dim(key, item)] = slice(slices[idx],
+                                                    slices[idx + 1])
+            data[key] = item[s]
+        return data
 
     def add_flag_to_edge_index(self):
         """
@@ -148,7 +172,10 @@ class MmDataset(InMemoryDataset):
         :param index:
         :return:
         """
-        return self._indexing(index)
+        copy = self.__class__.__new__(self.__class__)
+        copy.__dict__ = self.__dict__.copy()
+        copy.data, copy.slices = self.collate([self._get(i) for i in index])
+        return copy
 
     def __repr__(self):
         return '{}()'.format(self.name)
@@ -157,9 +184,12 @@ class MmDataset(InMemoryDataset):
 if __name__ == '__main__':
     mmm = MmDataset('data/', 'MM',
                     pre_transform=normalize_node_feature_sample_wise_transform,
-                    pre_concat=concat_adj_to_node_feature,
                     pre_set_missing=set_missing_node_feature,
-                    batch_size=400)
+                    pre_concat=concat_adj_to_node_feature,
+                    batch_size=1,
+                    r=4,
+                    force=False
+                    )
     mmm.__getitem__(0)
     print()
 
