@@ -10,8 +10,9 @@ from tensorboardX import SummaryWriter
 from torch import nn
 from torch.autograd import Variable
 from torch.utils.data import DataLoader
-from tqdm import tqdm_notebook
+import torch.distributed as dist
 
+from tqdm import tqdm_notebook
 from data.data_utils import normalize_node_feature_sample_wise, concat_adj_to_node_feature
 from dataset import MmDataset
 from models import Baseline
@@ -27,11 +28,12 @@ def my_iter(data_list):
 
 def train_cross_validation(model_cls, dataset, dropout=0.0, lr=1e-3,
                            weight_decay=1e-2, num_epochs=200, n_splits=5,
-                           use_gpu=True, multi_gpus=False, comment='',
-                           tb_service_loc=None, batch_size=1,
+                           use_gpu=True, multi_gpus=False, distribute=False,
+                           comment='', tb_service_loc=None, batch_size=1,
                            num_workers=0, pin_memory=False, cuda_device=None):
     """
     TODO: multi-gpu support
+    :param distribute: DDP
     :param cuda_device:
     :param pin_memory: DataLoader args https://devblogs.nvidia.com/how-optimize-data-transfers-cuda-cc/
     :param num_workers: DataLoader args
@@ -50,6 +52,8 @@ def train_cross_validation(model_cls, dataset, dropout=0.0, lr=1e-3,
     :return:
     """
     saved_args = locals()
+    if distribute:  # initialize ddp
+        dist.init_process_group('nccl', init_method='tcp://localhost:23456', world_size=1, rank=0)
     model_name = model_cls.__name__
     # sample data (torch_geometric Data) to construct model
     sample_data = dataset._get(0)
@@ -105,7 +109,9 @@ def train_cross_validation(model_cls, dataset, dropout=0.0, lr=1e-3,
         # > https://pytorch.org/docs/stable/onnx.html
         # writer.add_graph(model, input_to_model=dataset.__getitem__(0), verbose=True)
 
-        if multi_gpus and use_gpu:
+        if distribute:
+            model = nn.parallel.DistributedDataParallel(model.cuda())
+        elif multi_gpus and use_gpu:
             model = nn.DataParallel(model).to(device)
         elif use_gpu:
             model = model.to(device)
