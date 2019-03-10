@@ -15,7 +15,7 @@ class Baseline(torch.nn.Module):
         self.B = data.y.shape[0]
         # self.conv1d = nn.Conv1d(1, 1, kernel_size=self.num_features, stride=self.num_features)
         self.emb1 = nn.Linear(self.num_features - 7, 1)  # for adj
-#         self.emb2 = nn.Linear(8, 1)
+        # self.emb2 = nn.Linear(8, 1)
         self.fc1 = nn.Linear(int(8 * self.num_nodes / self.B), 6)
         # self.bn1 = nn.BatchNorm1d(6)
         self.drop1 = nn.Dropout(dropout)

@@ -19,20 +19,20 @@ class _EGATConv(torch.nn.Module):
         self.num_nodes = num_nodes
         self.B = batch_size
 
-        self.conv1 = EGATConv(in_channels, 4, dropout=dropout)
-        self.bn1 = nn.BatchNorm1d(self.num_nodes * 4)
-        self.conv2 = EGATConv(4, 4, dropout=dropout)
-        self.bn2 = nn.BatchNorm1d(self.num_nodes * 4)
-        self.conv3 = EGATConv(4, out_channels, dropout=dropout)
-        self.bn3 = nn.BatchNorm1d(self.num_nodes * 4)
+        self.conv1 = EGATConv(in_channels, out_channels, dropout=dropout)
+        # self.bn1 = nn.BatchNorm1d(self.num_nodes * 4)
+        # self.conv2 = EGATConv(4, out_channels, dropout=dropout)
+        # self.bn2 = nn.BatchNorm1d(self.num_nodes * 4)
+        # self.conv3 = EGATConv(4, out_channels, dropout=dropout)
+        # self.bn3 = nn.BatchNorm1d(self.num_nodes * 4)
 
     def forward(self, x, edge_index, edge_attr):
         x, edge_index, e = self.conv1(x, edge_index, edge_attr)
-        x = self.bn1(x.view(self.B, -1)).view(self.num_nodes * self.B, -1)
-        x, edge_index, e = self.conv2(x, edge_index, e)
-        x = self.bn2(x.view(self.B, -1)).view(self.num_nodes * self.B, -1)
-        x, edge_index, e = self.conv3(x, edge_index, e)
-        x = self.bn3(x.view(self.B, -1)).view(self.num_nodes * self.B, -1)
+        # x = self.bn1(x.view(self.B, -1)).view(self.num_nodes * self.B, -1)
+        # x, edge_index, e = self.conv2(x, edge_index, e)
+        # x = self.bn2(x.view(self.B, -1)).view(self.num_nodes * self.B, -1)
+        # x, edge_index, e = self.conv3(x, edge_index, e)
+        # x = self.bn3(x.view(self.B, -1)).view(self.num_nodes * self.B, -1)
 
         return x
 
@@ -45,27 +45,27 @@ class EGAT(torch.nn.Module):
         self.B = data.y.shape[0]
         self.num_nodes = int(data.num_nodes / self.B)
 
-        self.emb1 = nn.Linear(self.num_features - 7, 3)  # for adj
+        self.emb1 = nn.Linear(self.num_features - 7, 1)  # for adj
 
-        self.egatconv_channel1 = _EGATConv(10, 4, dropout, self.num_nodes, self.B)
-        self.egatconv_channel2 = _EGATConv(10, 4, dropout, self.num_nodes, self.B)
-        self.egatconv_channel3 = _EGATConv(10, 4, dropout, self.num_nodes, self.B)
+        self.egatconv_channel1 = _EGATConv(8, 4, dropout, self.num_nodes, self.B)
+        self.egatconv_channel2 = _EGATConv(8, 4, dropout, self.num_nodes, self.B)
+        self.egatconv_channel3 = _EGATConv(8, 4, dropout, self.num_nodes, self.B)
 
         self.emb2 = nn.Linear(3, 1)
 
         self.fd = int(4 * self.num_nodes)
 
-        # self.bn1 = nn.BatchNorm1d(self.fd)
+        self.bn1 = nn.BatchNorm1d(self.fd)
 
-        self.fc1 = nn.Linear(self.fd, 6)
+        self.fc1 = nn.Linear(self.fd, 4)
         self.drop1 = nn.Dropout(dropout)
         # self.bn2 = nn.BatchNorm1d(6)
-        # self.fc2 = nn.Linear(6, 8)
+        # self.fc2 = nn.Linear(12, 8)
         # self.drop2 = nn.Dropout(dropout)
         # self.bn3 = nn.BatchNorm1d(8)
         # self.fc3 = nn.Linear(8, 6)
         # self.drop3 = nn.Dropout(dropout)
-        self.fc4 = nn.Linear(6, 2)
+        self.fc4 = nn.Linear(4, 2)
 
     def forward(self, x, edge_index, edge_attr, y):
         if x.dim() == 3:
@@ -83,9 +83,9 @@ class EGAT(torch.nn.Module):
         ], dim=-1)
         x = self.emb2(x)
         x = x.view(B, -1)
-        x = F.elu(self.drop1(self.fc1(x)))
+        x = self.drop1(self.bn1(F.relu(self.fc1(x))))
 
-        # x = F.elu(self.drop2(self.fc2(self.bn2(x))))
+        # x = F.elu(self.drop2(self.fc2(x)))
         # x = F.elu(self.drop3(self.fc3(self.bn3(x))))
         x = self.fc4(x)
 
