@@ -14,16 +14,20 @@ from data.data_utils import concat_adj_to_node_feature, \
     set_missing_node_feature, \
     normalize_node_feature_sample_wise, \
     normalize_node_feature_sample_wise_transform, \
-    phrase_subject_list
+    phrase_subject_list, \
+    th_graph_list
 
 
 class MmDataset(InMemoryDataset):
     def __init__(self, root, name, transform=None, pre_transform=None,
-                 pre_concat=None, pre_set_missing=None, scale='60', r=3, force=False, batch_size=1):
+                 pre_concat=None, pre_set_missing=None, pre_th=th_graph_list, th=0.5,
+                 scale='60', r=3, force=False, batch_size=1):
         self.name = name
         self.pre_concat = pre_concat
         self.pre_transform = pre_transform
         self.pre_set_missing = pre_set_missing
+        self.pre_th = pre_th
+        self.th = th
         self.scale = scale
         if scale == '60':
             self.num_nodes = 129
@@ -44,8 +48,7 @@ class MmDataset(InMemoryDataset):
 
     @property
     def processed_file_names(self):
-        # data_ex.pt is with adj concatenated to node feature
-        return 'data_ex.pt'
+        return 'data.pt'
 
     def download(self):
         return
@@ -69,6 +72,7 @@ class MmDataset(InMemoryDataset):
                                  scale=self.scale,
                                  r=self.r,
                                  force=self.force)
+        data_list = self.pre_th(data_list, self.th)
         self.data, self.slices = self.collate(data_list)
 
         # set missing node feature for subcortical regions
@@ -183,11 +187,12 @@ class MmDataset(InMemoryDataset):
 
 if __name__ == '__main__':
     mmm = MmDataset('data/', 'MM',
-                    pre_transform=normalize_node_feature_sample_wise_transform,
+                    pre_transform=normalize_node_feature_sample_wise,
                     pre_set_missing=set_missing_node_feature,
                     pre_concat=concat_adj_to_node_feature,
+                    th=0.5,
                     batch_size=1,
-                    r=4,
+                    r=5,
                     force=False
                     )
     mmm.__getitem__(0)

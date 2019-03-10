@@ -210,6 +210,35 @@ def remove_least_k_percent(adj, k=0.1, fill_value=1e-10):
     return adj
 
 
+def th_graph(th, data):
+    """
+    set a threshold for edges
+    :param th: threshold
+    :param data:
+    :return:
+    """
+    adj = data.adj
+    adj[adj.abs() < th] = 0
+    for i, (u, v) in enumerate(data.edge_index.t()):
+        data.edge_attr[i] = adj[u][v]
+    return data
+
+
+def th_graph_list(data_list, th=0.5):
+    """
+
+    :param th: threshold
+    :param data_list:
+    :return:
+    """
+    pool = Pool()
+    func = partial(th_graph, th)
+    new_data_list = pool.map(func, data_list)
+    pool.close()
+    pool.join()
+    return new_data_list
+
+
 def create_and_save_data(scale, fs_subjects_dir_path, atlas_sheet_path,
                          fsl_subjects_dir_path, atlas_dir_path,
                          correlation_measure, r, tmp_dir_path,
@@ -239,7 +268,7 @@ def create_and_save_data(scale, fs_subjects_dir_path, atlas_sheet_path,
         corr_list = [correlation_measure.fit_transform([cm])[0] for cm in combo]
         # convert correlation to distance between [0, 1]
         # corr_list = [1 - np.sqrt((1 - corr) / 2) for corr in corr_list]
-        corr_list = [remove_least_k_percent(np.abs(corr), k=0.4) for corr in corr_list]  # abs
+        # corr_list = [remove_least_k_percent(np.abs(corr), k=0.4) for corr in corr_list]  # abs
         all_corr = np.stack(corr_list, axis=-1)
 
         # make the graph fully-connected for spectrum methods
@@ -253,9 +282,9 @@ def create_and_save_data(scale, fs_subjects_dir_path, atlas_sheet_path,
         A = nx.to_scipy_sparse_matrix(G)
         adj = A.tocoo()
         edge_index = np.stack([adj.row, adj.col])
-        edge_attr = np.zeros((len(adj.row), len(corr_list)))
-        for i in range(len(adj.row)):
-            edge_attr[i] = all_corr[adj.row[i], adj.col[i]]
+        edge_attr = np.ones((len(adj.row), len(corr_list)))  # add edge_attr later
+        # for i in range(len(adj.row)):
+        #     edge_attr[i] = all_corr[adj.row[i], adj.col[i]]
 
         data = Data(x=torch.tensor(node_attr_array, dtype=torch.float),
                     edge_index=torch.tensor(edge_index, dtype=torch.long),
@@ -425,7 +454,10 @@ if __name__ == '__main__':
     ddata_list = read_mm_data(['3044_1'], '/data_59/huze/MRS/FEAT.linear',
                               '/data_59/huze/Fs.subjects',
                               "/data_59/huze/Lausanne/LABELS.xlsx", '/data_59/huze/Lausanne', '60',
-                              '/data_59/huze/MDEGCNN/data/raw/tmp', r=4,
-                              force=True)
+                              '/data_59/huze/MDEGCNN/data/raw/tmp', r=5,
+                              force=False)
+    print(ddata_list[0].edge_index.shape)
+    ddata_list = th_graph_list(ddata_list[0:3])
+    print(ddata_list[0].edge_attr)
     print(ddata_list)
     print("Done!")

@@ -30,9 +30,11 @@ def train_cross_validation(model_cls, dataset, dropout=0.0, lr=1e-3,
                            weight_decay=1e-2, num_epochs=200, n_splits=5,
                            use_gpu=True, multi_gpus=False, distribute=False,
                            comment='', tb_service_loc=None, batch_size=1,
-                           num_workers=0, pin_memory=False, cuda_device=None):
+                           num_workers=0, pin_memory=False, cuda_device=None,
+                           ddp_port='23456'):
     """
     TODO: multi-gpu support
+    :param ddp_port:
     :param distribute: DDP
     :param cuda_device:
     :param pin_memory: DataLoader args https://devblogs.nvidia.com/how-optimize-data-transfers-cuda-cc/
@@ -53,7 +55,7 @@ def train_cross_validation(model_cls, dataset, dropout=0.0, lr=1e-3,
     """
     saved_args = locals()
     if distribute:  # initialize ddp
-        dist.init_process_group('nccl', init_method='tcp://localhost:23456', world_size=1, rank=0)
+        dist.init_process_group('nccl', init_method='tcp://localhost:{}'.format(ddp_port), world_size=1, rank=0)
     model_name = model_cls.__name__
     # sample data (torch_geometric Data) to construct model
     sample_data = dataset._get(0)
@@ -103,6 +105,7 @@ def train_cross_validation(model_cls, dataset, dropout=0.0, lr=1e-3,
                 writer.add_text('data/training_args', str(saved_args))
             optimizer = torch.optim.Adam(model.parameters(), lr=lr, betas=(0.9, 0.999),
                                          eps=1e-08, weight_decay=weight_decay, amsgrad=False)
+            # optimizer = torch.optim.SGD(model.parameters(), lr=lr, weight_decay=weight_decay)
 
         # add_graph is buggy, who want to fix it?
         # > this bug is complicated... something related to onnx
