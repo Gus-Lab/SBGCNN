@@ -5,14 +5,14 @@ from torch_geometric.data import Data, InMemoryDataset
 import codecs
 import torch
 from utils import subject_to_data
-from data.data_utils import read_mm_data
+from data.data_utils import read_mm_data, normalize_node_feature_node_wise
 import os.path as osp
 from os.path import join
 from tqdm import tqdm
 
 from data.data_utils import concat_adj_to_node_feature, \
     set_missing_node_feature, \
-    normalize_node_feature_sample_wise, \
+    normalize_node_feature_subject_wise, \
     normalize_node_feature_sample_wise_transform, \
     phrase_subject_list, \
     th_graph_list
@@ -187,7 +187,7 @@ class MmDataset(InMemoryDataset):
 
 if __name__ == '__main__':
     mmm = MmDataset('data/', 'MM',
-                    pre_transform=normalize_node_feature_sample_wise,
+                    pre_transform=normalize_node_feature_node_wise,
                     pre_set_missing=set_missing_node_feature,
                     pre_concat=concat_adj_to_node_feature,
                     th=0.5,

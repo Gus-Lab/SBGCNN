@@ -19,7 +19,7 @@ class _EGATConv(torch.nn.Module):
         self.num_nodes = num_nodes
         self.B = batch_size
 
-        self.conv1 = EGATConv(in_channels, out_channels, dropout=dropout)
+        self.conv1 = EGATConv(in_channels, out_channels, heads=2, dropout=dropout)
         # self.bn1 = nn.BatchNorm1d(self.num_nodes * 4)
         # self.conv2 = EGATConv(4, out_channels, dropout=dropout)
         # self.bn2 = nn.BatchNorm1d(self.num_nodes * 4)
@@ -45,11 +45,11 @@ class EGAT(torch.nn.Module):
         self.B = data.y.shape[0]
         self.num_nodes = int(data.num_nodes / self.B)
 
-        self.emb1 = nn.Linear(self.num_features - 7, 1)  # for adj
+        # self.emb1 = nn.Linear(self.num_features - 7, 1)  # for adj
 
-        self.egatconv_channel1 = _EGATConv(8, 4, dropout, self.num_nodes, self.B)
-        self.egatconv_channel2 = _EGATConv(8, 4, dropout, self.num_nodes, self.B)
-        self.egatconv_channel3 = _EGATConv(8, 4, dropout, self.num_nodes, self.B)
+        self.egatconv_channel1 = _EGATConv(11, 2, dropout, self.num_nodes, self.B)
+        self.egatconv_channel2 = _EGATConv(11, 2, dropout, self.num_nodes, self.B)
+        self.egatconv_channel3 = _EGATConv(11, 2, dropout, self.num_nodes, self.B)
 
         self.emb2 = nn.Linear(3, 1)
 
@@ -57,15 +57,15 @@ class EGAT(torch.nn.Module):
 
         self.bn1 = nn.BatchNorm1d(self.fd)
 
-        self.fc1 = nn.Linear(self.fd, 4)
+        self.fc1 = nn.Linear(self.fd, 8)
         self.drop1 = nn.Dropout(dropout)
         # self.bn2 = nn.BatchNorm1d(6)
-        # self.fc2 = nn.Linear(12, 8)
-        # self.drop2 = nn.Dropout(dropout)
+        self.fc2 = nn.Linear(8, 8)
+        self.drop2 = nn.Dropout(dropout)
         # self.bn3 = nn.BatchNorm1d(8)
         # self.fc3 = nn.Linear(8, 6)
         # self.drop3 = nn.Dropout(dropout)
-        self.fc4 = nn.Linear(4, 2)
+        self.fc3 = nn.Linear(8, 2)
 
     def forward(self, x, edge_index, edge_attr, y):
         if x.dim() == 3:
@@ -85,9 +85,9 @@ class EGAT(torch.nn.Module):
         x = x.view(B, -1)
         x = self.drop1(self.bn1(F.relu(self.fc1(x))))
 
-        # x = F.elu(self.drop2(self.fc2(x)))
+        x = self.drop2(F.relu(self.fc2(x)))
         # x = F.elu(self.drop3(self.fc3(self.bn3(x))))
-        x = self.fc4(x)
+        x = self.fc3(x)
 
         reg = torch.tensor([0], dtype=torch.float, device=x.device)
         return x, reg

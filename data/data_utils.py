@@ -45,7 +45,7 @@ def phrase_subject_list(all_subject_list):
 
     subject_list = np.asanyarray(one_and_threes).reshape(-1, 2).tolist()
     new_subject_list = []
-    for i in range(len(subject_list)):
+    for i in range(int(len(subject_list)/2)):
         new_subject_list.append(subject_list[i])
         new_subject_list.append(subject_list[len(subject_list) - 1 - i])
     new_subject_list = np.asarray(new_subject_list).reshape(-1).tolist()
@@ -376,7 +376,20 @@ def set_missing_node_feature(x, **kwargs):
     return x
 
 
-def normalize_node_feature_sample_wise(x, N):
+def normalize_node_feature_node_wise(x, **kwargs):
+    """
+    Node wise
+    :param x:
+    :return:
+    """
+    mean_tensor = torch.mean(x, dim=0)
+    std_tensor = torch.std(x, dim=0) + 1e-10
+    # z-score norm
+    x = (x - mean_tensor) / std_tensor
+    return x
+
+
+def normalize_node_feature_subject_wise(x, N):
     """
     Sample wise norm
     Normalize node feature for node feature matrix x
@@ -387,11 +400,9 @@ def normalize_node_feature_sample_wise(x, N):
     s1, s2 = x.shape
     x = x.view(N, -1)
     mean_tensor = torch.mean(x, dim=0)
-    std_tensor = torch.std(x, dim=0) + 1e-6
-
+    std_tensor = torch.std(x, dim=0) + 1e-10
     # z-score norm
     x = (x - mean_tensor) / std_tensor
-
     x = x.view(s1, s2)
     return x
 
@@ -437,8 +448,25 @@ def _concat_adj_to_node(data):
     # TODO: OSError: [Errno 24] Too many open files
     # TODO: Solution: ```$ ulimit -n 65535```
     # adj = edge_to_adj(data.edge_index, data.edge_attr, data.num_nodes)
-    adj = data.adj.sum(dim=-1)
+    adj = data.adj[:, :, 2]  # rest
     data.x = torch.cat([data.x, adj], dim=1)
+    return data
+
+
+def _concat_adj_statistics_to_node(data):
+    """
+    mean, std, skewness, kurtosis
+    :param data:
+    :return:
+    """
+    from scipy.stats import kurtosis, skew
+    adj = data.adj.sum(dim=-1)
+    mean = adj.mean(dim=-1)
+    std = adj.std(dim=-1)
+    skewness = torch.tensor(skew(adj, axis=-1))
+    kurto = torch.tensor(kurtosis(adj, axis=-1))
+    additional_feature = torch.stack([mean, std, skewness, kurto], dim=-1)
+    data.x = torch.cat([data.x, additional_feature], dim=-1)
     return data
 
 
@@ -449,7 +477,7 @@ def concat_adj_to_node_feature(data_list):
     :return:
     """
     p = Pool()
-    new_data_list = p.map(_concat_adj_to_node, data_list)
+    new_data_list = p.map(_concat_adj_statistics_to_node, data_list)
     p.close()
     return new_data_list
 
