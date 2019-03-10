@@ -3,6 +3,7 @@ import json
 import math
 import os.path as osp
 import pickle
+import random
 from functools import partial
 from multiprocessing.pool import Pool
 from os.path import join
@@ -41,8 +42,19 @@ def phrase_subject_list(all_subject_list):
     ids = [subject[:4] for subject in all_subject_list]
     one_and_three_ids = [subject for subject in ids if ids.count(subject) == 2]
     one_and_threes = [subject for subject in all_subject_list if subject[:4] in one_and_three_ids]
+
+    subject_list = np.asanyarray(one_and_threes).reshape(-1, 2).tolist()
+    new_subject_list = []
+    for i in range(len(subject_list)):
+        new_subject_list.append(subject_list[i])
+        new_subject_list.append(subject_list[len(subject_list) - 1 - i])
+    new_subject_list = np.asarray(new_subject_list).reshape(-1).tolist()
+
     singles = [subject for subject in all_subject_list if subject[:4] not in one_and_three_ids]
-    return one_and_threes + singles
+    random.seed(1234)
+    for subject in singles:
+        new_subject_list.insert(random.randint(0, len(new_subject_list)), subject)
+    return new_subject_list
 
 
 def read_fs_node_feature(subject, fs_subjects_dir_path, scale, hemi):
