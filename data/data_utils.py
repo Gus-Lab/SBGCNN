@@ -200,11 +200,23 @@ def slice_time_series(time_series, stride=100, length=250):
     return rest_blocks, ip_blocks, unknown_rest_blocks
 
 
-def resample_mm(time_series, r):
+def resample_mm_N_choose_r(time_series, r):
     """
     RESTBLOCK 6 choose r, IPBLOCK 5 choose r, unknown BLOCK
     :param time_series:
     :param r: N choose r
+    :return:
+    """
+    rest_blocks, ip_blocks, unknown_rest_blocks = slice_time_series(time_series)
+    rest_blocks = [np.concatenate(rest_block, axis=0) for rest_block in itertools.combinations(rest_blocks, r)]
+    ip_blocks = [np.concatenate(ip_block, axis=0) for ip_block in itertools.combinations(ip_blocks, r)]
+    return list(itertools.product(rest_blocks, ip_blocks, unknown_rest_blocks))
+
+
+def resample_mm_N_choose_n(time_series):
+    """
+    RESTBLOCK 6 choose 6, IPBLOCK 5 choose 5, unknown BLOCK sliding-window
+    :param time_series:
     :return:
     """
     rest_blocks, ip_blocks, unknown_rest_blocks = slice_time_series(time_series)
@@ -300,48 +312,31 @@ def create_and_save_data(scale, fs_subjects_dir_path, atlas_sheet_path,
     time_series = to_time_series(subject, fsl_subjects_dir_path, atlas_dir_path, scale)
 
     # TODO: redundant data argumentation ?
-    # combo_list = resample_mm(time_series, r)
-    # shuffle(combo_list)
-    # for combo in combo_list:  # 3 channels in 1 comb (RESTBLOCK IPBLOCK UNKNOWN)
-    #     corr_list = [correlation_measure.fit_transform([cm])[0] for cm in combo]
-    #     # convert correlation to distance between [0, 1]
-    #     # corr_list = [1 - np.sqrt((1 - corr) / 2) for corr in corr_list]
-    #     # corr_list = [remove_least_k_percent(np.abs(corr), k=0.4) for corr in corr_list]  # abs
-    #     all_corr = np.stack(corr_list, axis=-1)
-    #
-    #     # create torch_geometric Data
-    #     G = nx.from_numpy_array(np.ones_like(corr_list[0]))
-    #     A = nx.to_scipy_sparse_matrix(G)
-    #     adj = A.tocoo()
-    #     edge_index = np.stack([adj.row, adj.col])
-    #     edge_attr = np.ones((len(adj.row), len(corr_list)))  # add edge_attr later
-    #     # for i in range(len(adj.row)):
-    #     #     edge_attr[i] = all_corr[adj.row[i], adj.col[i]]
-    #
-    #     data = Data(x=torch.tensor(node_attr_array, dtype=torch.float),
-    #                 edge_index=torch.tensor(edge_index, dtype=torch.long),
-    #                 edge_attr=torch.tensor(edge_attr, dtype=torch.float),
-    #                 y=torch.tensor([0]) if subject.startswith('2') else torch.tensor([1]))
-    #     data.adj = torch.tensor(all_corr, dtype=torch.float)
-    #     data.ts = torch.tensor(time_series)
-    #     data_list.append(data)
+    combo_list = resample_mm_N_choose_n(time_series)
+    shuffle(combo_list)
+    for combo in combo_list:  # 3 channels in 1 comb (RESTBLOCK IPBLOCK UNKNOWN)
+        corr_list = [correlation_measure.fit_transform([cm])[0] for cm in combo]
+        # convert correlation to distance between [0, 1]
+        # corr_list = [1 - np.sqrt((1 - corr) / 2) for corr in corr_list]
+        # corr_list = [remove_least_k_percent(np.abs(corr), k=0.4) for corr in corr_list]  # abs
+        all_corr = np.stack(corr_list, axis=-1)
 
-    # TODO: no re-sample
-    corr = correlation_measure.fit_transform([time_series])[0]
-    # create torch_geometric Data
-    G = nx.from_numpy_array(np.ones_like(corr))
-    A = nx.to_scipy_sparse_matrix(G)
-    adj = A.tocoo()
-    edge_index = np.stack([adj.row, adj.col])
-    edge_attr = np.ones((len(adj.row), 1))  # add edge_attr later in dataset.py
+        # create torch_geometric Data
+        G = nx.from_numpy_array(np.ones_like(corr_list[0]))
+        A = nx.to_scipy_sparse_matrix(G)
+        adj = A.tocoo()
+        edge_index = np.stack([adj.row, adj.col])
+        edge_attr = np.ones((len(adj.row), len(corr_list)))  # add edge_attr later
+        # for i in range(len(adj.row)):
+        #     edge_attr[i] = all_corr[adj.row[i], adj.col[i]]
 
-    data = Data(x=torch.tensor(node_attr_array, dtype=torch.float),
-                edge_index=torch.tensor(edge_index, dtype=torch.long),
-                edge_attr=torch.tensor(edge_attr, dtype=torch.float),
-                y=torch.tensor([0]) if subject.startswith('2') else torch.tensor([1]))
-    data.adj = torch.tensor(corr, dtype=torch.float).unsqueeze(-1)
-    data.ts = torch.tensor(time_series)
-    data_list.append(data)
+        data = Data(x=torch.tensor(node_attr_array, dtype=torch.float),
+                    edge_index=torch.tensor(edge_index, dtype=torch.long),
+                    edge_attr=torch.tensor(edge_attr, dtype=torch.float),
+                    y=torch.tensor([0]) if subject.startswith('2') else torch.tensor([1]))
+        data.adj = torch.tensor(all_corr, dtype=torch.float)
+        data.ts = torch.tensor(time_series)
+        data_list.append(data)
 
     subject_tmp_file_path = osp.join(tmp_dir_path, '{}.pickle'.format(subject))
     print("Saving {} samples on subject {}".format(len(data_list), subject))
@@ -464,17 +459,28 @@ def normalize_node_feature_sample_wise_transform(x, N):
     return x
 
 
-def edge_to_adj(edge_index, edge_attr, num_nodes):
-    """
-    Return:
-        adj: Adjacency matrix with shape [num_nodes, num_nodes, num_edge_features]
-    """
-    # change divice placement to speed up
-    adj = torch.zeros(num_nodes, num_nodes, edge_attr.shape[-1])
-    for i, (u, v) in enumerate(edge_index.transpose(0, 1)):
-        adj[u][v] = edge_attr[i]
-    # adj = adj.permute(2, 0, 1)
+def doubly_stochastic_normlization_for_data(data):
+    adj = data.adj
+    tilde_adj = adj / adj.sum(dim=1)
+    edge_attr = data.edge_attr
+    for u, (i, j) in enumerate(data.edge_index.t()):
+        E_i_j = 0
+        for k in range(0, data.num_nodes):
+            E_i_j += tilde_adj[i][k] * tilde_adj[j][k] / tilde_adj[:, k].sum(dim=0)
+        edge_attr[u] = E_i_j
+    return edge_attr
+
+
+def edge_attr_to_distance_for_data(data):
+    adj = data.adj
+    adj = 1 - torch.sqrt((1 - adj) / 2)
     return adj
+
+
+def set_edge_attr_for_data(data):
+    data.adj = edge_attr_to_distance_for_data(data)
+    data.edge_attr = doubly_stochastic_normlization_for_data(data)
+    return data
 
 
 def _concat_adj_to_node(data):

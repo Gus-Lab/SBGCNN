@@ -195,6 +195,7 @@ if __name__ == '__main__':
                     pre_concat=concat_extra_node_feature,
                     pre_zt=zt_graph_list,
                     batch_size=1,
+                    r=5,
                     force=True
                     )
     mmm.__getitem__(0)

@@ -72,8 +72,8 @@ class EGATConv(torch.nn.Module):
         x = x.view(-1, self.heads, self.out_channels)
 
         # Add self-loops to adjacency matrix.
-        edge_index, edge_attr = remove_self_loops(edge_index, edge_attr)
-        edge_index, edge_attr = add_self_loops_with_edge_attr(edge_index, edge_attr, num_nodes=x.size(0))
+        # edge_index, edge_attr = remove_self_loops(edge_index, edge_attr)
+        # edge_index, edge_attr = add_self_loops_with_edge_attr(edge_index, edge_attr, num_nodes=x.size(0))
         row, col = edge_index
 
         # Compute attention coefficients.
