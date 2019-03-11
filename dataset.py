@@ -5,7 +5,7 @@ from torch_geometric.data import Data, InMemoryDataset
 import codecs
 import torch
 from utils import subject_to_data
-from data.data_utils import read_mm_data, normalize_node_feature_node_wise, zt_graph_list
+from data.data_utils import read_mm_data, normalize_node_feature_node_wise, zt_edge_attr
 import os.path as osp
 from os.path import join
 from tqdm import tqdm
@@ -15,17 +15,19 @@ from data.data_utils import concat_extra_node_feature, \
     normalize_node_feature_subject_wise, \
     normalize_node_feature_sample_wise_transform, \
     phrase_subject_list, \
-    th_graph_list
+    th_edge_attr, \
+    set_edge_attr
 
 
 class MmDataset(InMemoryDataset):
-    def __init__(self, root, name, transform=None, pre_transform=None,
+    def __init__(self, root, name, transform=None, pre_transform=None, pre_set_edge_attr=set_edge_attr,
                  pre_concat=None, pre_set_missing=None, pre_th=None, th=0.0,
                  pre_zt=None,
                  scale='60', r=3, force=False, batch_size=1):
         self.name = name
         self.pre_concat = pre_concat
         self.pre_transform = pre_transform
+        self.pre_set_edge_attr = pre_set_edge_attr
         self.pre_set_missing = pre_set_missing
         self.pre_th = pre_th
         self.th = th
@@ -74,8 +76,15 @@ class MmDataset(InMemoryDataset):
                                  scale=self.scale,
                                  r=self.r,
                                  force=self.force)
-        data_list = self.pre_th(data_list, self.th) if self.pre_th else data_list
-        data_list = self.pre_zt(data_list) if self.pre_zt else data_list
+        print("Setting edge_attr")
+        data_list = self.pre_set_edge_attr(data_list)
+        if self.pre_zt:
+            print("Fisher Z-transform edge_attr")
+            data_list = self.pre_zt(data_list)
+        if self.pre_th:
+            print("Setting threshold = {} for edge_attr".format(self.th))
+            data_list = self.pre_th(data_list, self.th)
+
         self.data, self.slices = self.collate(data_list)
 
         # set missing node feature for subcortical regions
@@ -192,8 +201,9 @@ if __name__ == '__main__':
     mmm = MmDataset('data/', 'MM',
                     pre_transform=normalize_node_feature_node_wise,
                     pre_set_missing=set_missing_node_feature,
+                    pre_set_edge_attr=set_edge_attr,
                     pre_concat=concat_extra_node_feature,
-                    pre_zt=zt_graph_list,
+                    pre_zt=zt_edge_attr,
                     batch_size=1,
                     r=5,
                     force=True

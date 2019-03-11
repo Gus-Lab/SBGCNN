@@ -220,8 +220,8 @@ def resample_mm_N_choose_n(time_series):
     :return:
     """
     rest_blocks, ip_blocks, unknown_rest_blocks = slice_time_series(time_series)
-    rest_blocks = [np.concatenate(rest_block, axis=0) for rest_block in itertools.combinations(rest_blocks, r)]
-    ip_blocks = [np.concatenate(ip_block, axis=0) for ip_block in itertools.combinations(ip_blocks, r)]
+    rest_blocks = [np.concatenate(rest_blocks, axis=0)]
+    ip_blocks = [np.concatenate(ip_blocks, axis=0)]
     return list(itertools.product(rest_blocks, ip_blocks, unknown_rest_blocks))
 
 
@@ -234,7 +234,7 @@ def remove_least_k_percent(adj, k=0.1, fill_value=1e-10):
     return adj
 
 
-def th_graph(th, data):
+def _th_edge_attr(th, data):
     """
     set a threshold for edges
     :param th: threshold
@@ -248,7 +248,7 @@ def th_graph(th, data):
     return data
 
 
-def th_graph_list(data_list, th=0.5):
+def th_edge_attr(data_list, th=0.5):
     """
 
     :param th: threshold
@@ -256,33 +256,31 @@ def th_graph_list(data_list, th=0.5):
     :return:
     """
     pool = Pool()
-    func = partial(th_graph, th)
+    func = partial(_th_edge_attr, th)
     new_data_list = pool.map(func, data_list)
     pool.close()
     pool.join()
     return new_data_list
 
 
-def zt_graph(data):
+def _zt_edge_attr(data):
     """
 
     :param data:
     :return:
     """
-    adj = torch.atan(data.adj)
-    for i, (u, v) in enumerate(data.edge_index.t()):
-        data.edge_attr[i] = adj[u][v]
+    data.edge_attr = torch.atan(data.edge_attr)
     return data
 
 
-def zt_graph_list(data_list):
+def zt_edge_attr(data_list):
     """
 
     :param data_list:
     :return:
     """
     pool = Pool()
-    new_data_list = pool.map(zt_graph, data_list)
+    new_data_list = pool.map(_zt_edge_attr, data_list)
     pool.close()
     pool.join()
     return new_data_list
@@ -459,7 +457,7 @@ def normalize_node_feature_sample_wise_transform(x, N):
     return x
 
 
-def doubly_stochastic_normlization_for_data(data):
+def doubly_stochastic_normlization(data):
     adj = data.adj
     tilde_adj = adj / adj.sum(dim=1)
     edge_attr = data.edge_attr
@@ -477,10 +475,23 @@ def edge_attr_to_distance_for_data(data):
     return adj
 
 
-def set_edge_attr_for_data(data):
+def _set_edge_attr_for_data(data):
     data.adj = edge_attr_to_distance_for_data(data)
-    data.edge_attr = doubly_stochastic_normlization_for_data(data)
+    data.edge_attr = doubly_stochastic_normlization(data)
     return data
+
+
+def set_edge_attr(data_list):
+    """
+    Note: for a list of graph
+    :param data_list:
+    :return:
+    """
+    p = Pool()
+    new_data_list = p.map(_set_edge_attr_for_data, data_list)
+    p.close()
+    p.join()
+    return new_data_list
 
 
 def _concat_adj_to_node(data):
@@ -489,8 +500,6 @@ def _concat_adj_to_node(data):
     :param data:
     :return:
     """
-    # TODO: OSError: [Errno 24] Too many open files
-    # TODO: Solution: ```$ ulimit -n 65535```
     # adj = edge_to_adj(data.edge_index, data.edge_attr, data.num_nodes)
     adj = data.adj.sum(dim=-1)
     data.x = torch.cat([data.x, adj], dim=1)
@@ -539,6 +548,7 @@ def concat_extra_node_feature(data_list):
     p = Pool()
     new_data_list = p.map(_concat_extra_node_feature, data_list)
     p.close()
+    p.join()
     return new_data_list
 
 
@@ -553,7 +563,7 @@ if __name__ == '__main__':
                               '/data_59/huze/MDEGCNN/data/raw/tmp', r=5,
                               force=False)
     print(ddata_list[0].edge_index.shape)
-    ddata_list = th_graph_list(ddata_list[0:3])
+    ddata_list = th_edge_attr(ddata_list[0:3])
     print(ddata_list[0].edge_attr)
     print(ddata_list)
     print("Done!")
