@@ -1,29 +1,20 @@
-import copy
 import os.path as osp
 from functools import partial
-from itertools import cycle
 
-import numpy as np
 import torch
+import torch.distributed as dist
+from boxx import timeit
 from sklearn.model_selection import KFold
 from tensorboardX import SummaryWriter
 from torch import nn
-from torch.autograd import Variable
 from torch.utils.data import DataLoader
-import torch.distributed as dist
-
 from tqdm import tqdm_notebook
-from data.data_utils import normalize_node_feature_sample_wise, concat_adj_to_node_feature
+
+from data.data_utils import normalize_node_feature_subject_wise, concat_adj_to_node_feature, \
+    normalize_node_feature_node_wise
 from dataset import MmDataset
 from models import Baseline
 from utils import get_model_log_dir
-
-from boxx import timeit
-
-
-def my_iter(data_list):
-    for data in data_list:
-        yield data
 
 
 def train_cross_validation(model_cls, dataset, dropout=0.0, lr=1e-3,
@@ -197,7 +188,7 @@ def train_cross_validation(model_cls, dataset, dropout=0.0, lr=1e-3,
 
 if __name__ == "__main__":
     dataset = MmDataset('data/', 'MM',
-                        pre_transform=normalize_node_feature_sample_wise,
+                        pre_transform=normalize_node_feature_node_wise,
                         pre_concat=concat_adj_to_node_feature,
                         batch_size=1000)
     model = Baseline
