@@ -45,7 +45,7 @@ def phrase_subject_list(all_subject_list):
 
     subject_list = np.asanyarray(one_and_threes).reshape(-1, 2).tolist()
     new_subject_list = []
-    for i in range(int(len(subject_list)/2)):
+    for i in range(int(len(subject_list) / 2)):
         new_subject_list.append(subject_list[i])
         new_subject_list.append(subject_list[len(subject_list) - 1 - i])
     new_subject_list = np.asarray(new_subject_list).reshape(-1).tolist()
@@ -301,8 +301,9 @@ def create_and_save_data(scale, fs_subjects_dir_path, atlas_sheet_path,
         data = Data(x=torch.tensor(node_attr_array, dtype=torch.float),
                     edge_index=torch.tensor(edge_index, dtype=torch.long),
                     edge_attr=torch.tensor(edge_attr, dtype=torch.float),
-                    y=torch.tensor([1]) if subject.startswith('2') else torch.tensor([0]))
+                    y=torch.tensor([0]) if subject.startswith('2') else torch.tensor([1]))
         data.adj = torch.tensor(all_corr, dtype=torch.float)
+        data.ts = torch.tensor(time_series)
         data_list.append(data)
 
     subject_tmp_file_path = osp.join(tmp_dir_path, '{}.pickle'.format(subject))
@@ -448,7 +449,7 @@ def _concat_adj_to_node(data):
     # TODO: OSError: [Errno 24] Too many open files
     # TODO: Solution: ```$ ulimit -n 65535```
     # adj = edge_to_adj(data.edge_index, data.edge_attr, data.num_nodes)
-    adj = data.adj[:, :, 2]  # rest
+    adj = data.adj.sum(dim=-1)
     data.x = torch.cat([data.x, adj], dim=1)
     return data
 
@@ -470,20 +471,32 @@ def _concat_adj_statistics_to_node(data):
     return data
 
 
-def concat_adj_to_node_feature(data_list):
+def _concat_ts_to_node(data):
+    data.x = torch.cat([data.x, data.ts.t()], dim=-1)
+    return data
+
+
+def _concat_extra_node_feature(data):
+    """
+
+    :param data:
+    :return:
+    """
+    data = _concat_adj_to_node(data)
+    # data = _concat_ts_to_node(data)
+    return data
+
+
+def concat_extra_node_feature(data_list):
     """
     Note: for a list of graph
     :param data_list:
     :return:
     """
     p = Pool()
-    new_data_list = p.map(_concat_adj_statistics_to_node, data_list)
+    new_data_list = p.map(_concat_extra_node_feature, data_list)
     p.close()
     return new_data_list
-
-
-def concat_adj_to_node_feature_dataset(dataset):
-    pass
 
 
 if __name__ == '__main__':

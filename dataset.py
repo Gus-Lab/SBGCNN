@@ -10,7 +10,7 @@ import os.path as osp
 from os.path import join
 from tqdm import tqdm
 
-from data.data_utils import concat_adj_to_node_feature, \
+from data.data_utils import concat_extra_node_feature, \
     set_missing_node_feature, \
     normalize_node_feature_subject_wise, \
     normalize_node_feature_sample_wise_transform, \
@@ -189,7 +189,7 @@ if __name__ == '__main__':
     mmm = MmDataset('data/', 'MM',
                     pre_transform=normalize_node_feature_node_wise,
                     pre_set_missing=set_missing_node_feature,
-                    pre_concat=concat_adj_to_node_feature,
+                    pre_concat=concat_extra_node_feature,
                     th=0.5,
                     batch_size=1,
                     r=5,
