@@ -130,13 +130,13 @@ def train_cross_validation(model_cls, dataset, dropout=0.0, lr=1e-3,
                 running_nll_loss = 0.0
                 epoch_yhat_0, epoch_yhat_1 = torch.tensor([]), torch.tensor([])
 
-                for x, edge_index, edge_attr, y in tqdm_notebook(dataloader, desc=phase, leave=False):
+                for x, edge_index, edge_attr, y, adj in tqdm_notebook(dataloader, desc=phase, leave=False):
 
                     if use_gpu and not multi_gpus:
-                        x, edge_index, edge_attr, y = \
-                            x.to(device), edge_index.to(device), edge_attr.to(device), y.to(device)
+                        x, edge_index, edge_attr, y, adj = \
+                            x.to(device), edge_index.to(device), edge_attr.to(device), y.to(device), adj.to(device)
 
-                    y_hat, reg = model(x, edge_index, edge_attr, y)
+                    y_hat, reg = model(x, edge_index, edge_attr, y, adj)
                     y = y.view(-1).cuda() if multi_gpus else y
                     loss = criterion(y_hat, y)
                     total_loss = (loss + reg).mean()

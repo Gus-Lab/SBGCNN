@@ -3,6 +3,7 @@ from torch_geometric.data import Data
 import networkx as nx
 import os.path as osp
 import json, codecs
+import numpy as np
 
 
 def get_model_log_dir(comment, model_name):
@@ -55,19 +56,14 @@ def adj_to_edge_index(adj):
     Args:
         adj: <class Tensor> Adjacency matrix with shape [num_nodes, num_nodes]
     """
-    edge_index = list()
-    for i in range(0, adj.shape[0]):
-        for j in range(i, adj.shape[1]):
-            if adj[i][j].sum().item() != 0:
-                edge_index.append([i, j])
+    G = nx.from_numpy_array(adj.detach().cpu().numpy())
+    A = nx.to_scipy_sparse_matrix(G)
+    A = A.tocoo()
+    edge_index = torch.tensor(np.stack([A.row, A.col]), dtype=torch.long)
+    edge_attr = torch.tensor(np.ones((len(A.row), 1)))
 
-    edge_attr = list()
-    for u, v in edge_index:
-        edge_attr.append(adj[u][v])
-
-    edge_index = torch.tensor(edge_index, dtype=torch.long)
-    edge_index = edge_index.t().contiguous()
-    edge_attr = torch.tensor(edge_attr)
+    for i, (u, v) in enumerate(edge_index.t()):
+        edge_attr[i] = adj[u][v]
 
     return edge_index.to(adj.device), edge_attr.to(adj.device)
 

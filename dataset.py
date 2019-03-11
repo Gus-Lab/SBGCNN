@@ -5,7 +5,7 @@ from torch_geometric.data import Data, InMemoryDataset
 import codecs
 import torch
 from utils import subject_to_data
-from data.data_utils import read_mm_data, normalize_node_feature_node_wise
+from data.data_utils import read_mm_data, normalize_node_feature_node_wise, zt_graph_list
 import os.path as osp
 from os.path import join
 from tqdm import tqdm
@@ -20,7 +20,8 @@ from data.data_utils import concat_extra_node_feature, \
 
 class MmDataset(InMemoryDataset):
     def __init__(self, root, name, transform=None, pre_transform=None,
-                 pre_concat=None, pre_set_missing=None, pre_th=th_graph_list, th=0.5,
+                 pre_concat=None, pre_set_missing=None, pre_th=None, th=0.0,
+                 pre_zt=None,
                  scale='60', r=3, force=False, batch_size=1):
         self.name = name
         self.pre_concat = pre_concat
@@ -28,6 +29,7 @@ class MmDataset(InMemoryDataset):
         self.pre_set_missing = pre_set_missing
         self.pre_th = pre_th
         self.th = th
+        self.pre_zt = pre_zt
         self.scale = scale
         if scale == '60':
             self.num_nodes = 129
@@ -72,7 +74,8 @@ class MmDataset(InMemoryDataset):
                                  scale=self.scale,
                                  r=self.r,
                                  force=self.force)
-        data_list = self.pre_th(data_list, self.th)
+        data_list = self.pre_th(data_list, self.th) if self.pre_th else data_list
+        data_list = self.pre_zt(data_list) if self.pre_zt else data_list
         self.data, self.slices = self.collate(data_list)
 
         # set missing node feature for subcortical regions
@@ -102,7 +105,7 @@ class MmDataset(InMemoryDataset):
             s[self.data.cat_dim(key, item)] = slice(slices[idx],
                                                     slices[idx + 1])
             data[key] = item[s]
-        return data.x, data.edge_index, data.edge_attr, data.y
+        return data.x, data.edge_index, data.edge_attr, data.y, data.adj
 
     def _get(self, idx):
         data = Data()
@@ -190,10 +193,9 @@ if __name__ == '__main__':
                     pre_transform=normalize_node_feature_node_wise,
                     pre_set_missing=set_missing_node_feature,
                     pre_concat=concat_extra_node_feature,
-                    th=0.5,
+                    pre_zt=zt_graph_list,
                     batch_size=1,
-                    r=5,
-                    force=False
+                    force=True
                     )
     mmm.__getitem__(0)
     print()

@@ -51,7 +51,7 @@ def phrase_subject_list(all_subject_list):
     new_subject_list = np.asarray(new_subject_list).reshape(-1).tolist()
 
     singles = [subject for subject in all_subject_list if subject[:4] not in one_and_three_ids]
-    random.seed(1234)
+    random.seed(2525)
     for subject in singles:
         new_subject_list.insert(random.randint(0, len(new_subject_list)), subject)
     return new_subject_list
@@ -251,6 +251,31 @@ def th_graph_list(data_list, th=0.5):
     return new_data_list
 
 
+def zt_graph(data):
+    """
+
+    :param data:
+    :return:
+    """
+    adj = torch.atan(data.adj)
+    for i, (u, v) in enumerate(data.edge_index.t()):
+        data.edge_attr[i] = adj[u][v]
+    return data
+
+
+def zt_graph_list(data_list):
+    """
+
+    :param data_list:
+    :return:
+    """
+    pool = Pool()
+    new_data_list = pool.map(zt_graph, data_list)
+    pool.close()
+    pool.join()
+    return new_data_list
+
+
 def create_and_save_data(scale, fs_subjects_dir_path, atlas_sheet_path,
                          fsl_subjects_dir_path, atlas_dir_path,
                          correlation_measure, r, tmp_dir_path,
@@ -274,37 +299,49 @@ def create_and_save_data(scale, fs_subjects_dir_path, atlas_sheet_path,
     node_attr_array = to_node_attr_array(subject, fs_subjects_dir_path, atlas_sheet_path, scale)
     time_series = to_time_series(subject, fsl_subjects_dir_path, atlas_dir_path, scale)
 
-    combo_list = resample_mm(time_series, r)
-    shuffle(combo_list)
-    for combo in combo_list:  # 3 channels in 1 comb (RESTBLOCK IPBLOCK UNKNOWN)
-        corr_list = [correlation_measure.fit_transform([cm])[0] for cm in combo]
-        # convert correlation to distance between [0, 1]
-        # corr_list = [1 - np.sqrt((1 - corr) / 2) for corr in corr_list]
-        # corr_list = [remove_least_k_percent(np.abs(corr), k=0.4) for corr in corr_list]  # abs
-        all_corr = np.stack(corr_list, axis=-1)
+    # TODO: redundant data argumentation ?
+    # combo_list = resample_mm(time_series, r)
+    # shuffle(combo_list)
+    # for combo in combo_list:  # 3 channels in 1 comb (RESTBLOCK IPBLOCK UNKNOWN)
+    #     corr_list = [correlation_measure.fit_transform([cm])[0] for cm in combo]
+    #     # convert correlation to distance between [0, 1]
+    #     # corr_list = [1 - np.sqrt((1 - corr) / 2) for corr in corr_list]
+    #     # corr_list = [remove_least_k_percent(np.abs(corr), k=0.4) for corr in corr_list]  # abs
+    #     all_corr = np.stack(corr_list, axis=-1)
+    #
+    #     # create torch_geometric Data
+    #     G = nx.from_numpy_array(np.ones_like(corr_list[0]))
+    #     A = nx.to_scipy_sparse_matrix(G)
+    #     adj = A.tocoo()
+    #     edge_index = np.stack([adj.row, adj.col])
+    #     edge_attr = np.ones((len(adj.row), len(corr_list)))  # add edge_attr later
+    #     # for i in range(len(adj.row)):
+    #     #     edge_attr[i] = all_corr[adj.row[i], adj.col[i]]
+    #
+    #     data = Data(x=torch.tensor(node_attr_array, dtype=torch.float),
+    #                 edge_index=torch.tensor(edge_index, dtype=torch.long),
+    #                 edge_attr=torch.tensor(edge_attr, dtype=torch.float),
+    #                 y=torch.tensor([0]) if subject.startswith('2') else torch.tensor([1]))
+    #     data.adj = torch.tensor(all_corr, dtype=torch.float)
+    #     data.ts = torch.tensor(time_series)
+    #     data_list.append(data)
 
-        # make the graph fully-connected for spectrum methods
-        # for i, corr in enumerate(corr_list):
-        #     corr[corr <= 0] = 1e-6
-        #     assert np.count_nonzero(corr) == corr.shape[0] * corr.shape[1]
-        #     corr_list[i] = corr
+    # TODO: no re-sample
+    corr = correlation_measure.fit_transform([time_series])[0]
+    # create torch_geometric Data
+    G = nx.from_numpy_array(np.ones_like(corr))
+    A = nx.to_scipy_sparse_matrix(G)
+    adj = A.tocoo()
+    edge_index = np.stack([adj.row, adj.col])
+    edge_attr = np.ones((len(adj.row), 1))  # add edge_attr later in dataset.py
 
-        # create torch_geometric Data
-        G = nx.from_numpy_array(np.ones_like(corr_list[0]))
-        A = nx.to_scipy_sparse_matrix(G)
-        adj = A.tocoo()
-        edge_index = np.stack([adj.row, adj.col])
-        edge_attr = np.ones((len(adj.row), len(corr_list)))  # add edge_attr later
-        # for i in range(len(adj.row)):
-        #     edge_attr[i] = all_corr[adj.row[i], adj.col[i]]
-
-        data = Data(x=torch.tensor(node_attr_array, dtype=torch.float),
-                    edge_index=torch.tensor(edge_index, dtype=torch.long),
-                    edge_attr=torch.tensor(edge_attr, dtype=torch.float),
-                    y=torch.tensor([0]) if subject.startswith('2') else torch.tensor([1]))
-        data.adj = torch.tensor(all_corr, dtype=torch.float)
-        data.ts = torch.tensor(time_series)
-        data_list.append(data)
+    data = Data(x=torch.tensor(node_attr_array, dtype=torch.float),
+                edge_index=torch.tensor(edge_index, dtype=torch.long),
+                edge_attr=torch.tensor(edge_attr, dtype=torch.float),
+                y=torch.tensor([0]) if subject.startswith('2') else torch.tensor([1]))
+    data.adj = torch.tensor(corr, dtype=torch.float).unsqueeze(-1)
+    data.ts = torch.tensor(time_series)
+    data_list.append(data)
 
     subject_tmp_file_path = osp.join(tmp_dir_path, '{}.pickle'.format(subject))
     print("Saving {} samples on subject {}".format(len(data_list), subject))
@@ -482,7 +519,7 @@ def _concat_extra_node_feature(data):
     :param data:
     :return:
     """
-    data = _concat_adj_to_node(data)
+    data = _concat_adj_statistics_to_node(data)
     # data = _concat_ts_to_node(data)
     return data
 
