@@ -80,9 +80,10 @@ class EGATConv(torch.nn.Module):
         alpha = torch.cat([x[row], x[col]], dim=-1)
         alpha = (alpha * self.att_weight).sum(dim=-1)
         alpha = F.leaky_relu(alpha, self.negative_slope)
-        alpha = softmax(alpha, row, num_nodes=x.size(0))
+        # alpha = softmax(alpha, row, num_nodes=x.size(0))
         # This will broadcast edge_attr across all attentions
         alpha = torch.mul(alpha, edge_attr.float())
+        alpha = softmax(alpha, row, num_nodes=x.size(0))
         alpha = F.normalize(alpha, p=1, dim=1)
 
         # Sample attention coefficients stochastically.

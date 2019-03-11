@@ -34,35 +34,24 @@ class DIFFPool(torch.nn.Module):
 
     """
 
-    def __init__(self, in_channels, out_channels):
-        """
+    def __init__(self):
 
-        :param in_channels: in num_nodes
-        :param out_channels: out num_nodes
-        """
         super(DIFFPool, self).__init__()
-        self.in_channels = in_channels
-        self.out_channels = out_channels
-        self.s = nn.Parameter(torch.Tensor(in_channels, out_channels))
 
-        self.reset_parameters()
 
-    def reset_parameters(self):
-        glorot(self.s)
-
-    def forward(self, x, adj):
+    def forward(self, x, adj, s):
         """
         Returns pooled node feature matrix, coarsened adjacency matrix and the
         auxiliary link prediction objective
         Args:
             adj: Adjacency matrix with shape [num_nodes, num_nodes]
         """
-        out_x, out_adj, reg = dense_diff_pool(x, adj, self.s)
+        out_x, out_adj, reg = dense_diff_pool(x, adj, s)
         out_adj = out_adj.squeeze(0) if out_adj.dim() == 3 else out_adj
-        # with timeit('adj_to_edge_index'):
-        #     out_edge_index, out_edge_attr = adj_to_edge_index(out_adj)
-        # TODO: too slow
-        return out_x, None, None, out_adj, reg
+        out_x = out_x.squeeze(0) if out_x.dim() == 3 else out_x
+        out_edge_index, out_edge_attr = adj_to_edge_index(out_adj)
+
+        return out_x, out_edge_index, out_edge_attr, out_adj, reg
 
     def __repr__(self):
-        return '{}({}, {})'.format(self.__class__.__name__, self.in_channels, self.out_channels)
+        return '{}()'.format(self.__class__.__name__)
