@@ -475,9 +475,28 @@ def edge_attr_to_distance_for_data(data):
     return adj
 
 
+def edge_to_adj(edge_index, edge_attr, num_nodes):
+    """
+    Return:
+        adj: Adjacency matrix with shape [num_edge_features, num_nodes, num_nodes]
+    """
+    # change divice placement to speed up
+    adj = torch.zeros(num_nodes, num_nodes, edge_attr.shape[-1])
+    i = 0
+    for (u, v) in edge_index.transpose(0, 1):
+        adj[u][v] = edge_attr[i]
+        adj[v][u] = edge_attr[i]
+        i = i + 1
+    return adj
+
+
 def _set_edge_attr_for_data(data):
     data.adj = edge_attr_to_distance_for_data(data)
+    data.adj = torch.atan(data.adj)  # fisher z-transform
+
     data.edge_attr = doubly_stochastic_normlization(data)
+    data.adj = edge_to_adj(data.edge_index, data.edge_attr, data.num_nodes)
+
     return data
 
 
