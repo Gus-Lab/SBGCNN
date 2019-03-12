@@ -92,8 +92,8 @@ def train_cross_validation(model_cls, dataset, dropout=0.0, lr=1e-3,
             writer = SummaryWriter(log_dir=osp.join('runs', log_dir_base + str(fold)))
             if fold == 1:
                 print(model)
-                writer.add_text('data/model_summary', model.__repr__())
-                writer.add_text('data/training_args', str(saved_args))
+                writer.add_text('model_summary', model.__repr__())
+                writer.add_text('training_args', str(saved_args))
             optimizer = torch.optim.Adam(model.parameters(), lr=lr, betas=(0.9, 0.999),
                                          eps=1e-08, weight_decay=weight_decay, amsgrad=False)
             # optimizer = torch.optim.SGD(model.parameters(), lr=lr, weight_decay=weight_decay)
@@ -167,15 +167,16 @@ def train_cross_validation(model_cls, dataset, dropout=0.0, lr=1e-3,
                 #     print("[Model {0} Epoch {1}]\tLoss: {2:.3f}\tAccuracy: {3:.3f}\t[{4}]".format(
                 #         fold, epoch, epoch_total_loss, epoch_acc, phase))
 
-                writer.add_scalars('data/{}_loss'.format(phase),
-                                   {'Total Loss': epoch_total_loss,
-                                    'NLL Loss': epoch_nll_loss,
-                                    'Total Reg Loss': epoch_reg_loss} if epoch_reg_loss != 0 else
-                                   {'Total Loss': epoch_total_loss},
+                writer.add_scalars('nll_loss',
+                                   {'{}_nll_loss'.format(phase): epoch_nll_loss},
                                    epoch)
-                writer.add_scalars('data/{}_accuracy'.format(phase),
-                                   {'Total Accuracy': epoch_acc},
+                writer.add_scalars('accuracy',
+                                   {'{}_accuracy'.format(phase): epoch_acc},
                                    epoch)
+                if epoch_reg_loss != 0:
+                    writer.add_scalars('reg_loss'.format(phase),
+                                       {'{}_reg_loss'.format(phase): epoch_reg_loss},
+                                       epoch)
                 writer.add_histogram('hist/{}_yhat_0'.format(phase),
                                      epoch_yhat_0,
                                      epoch)

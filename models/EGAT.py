@@ -23,7 +23,7 @@ class _EGATConv(torch.nn.Module):
         self.B = batch_size
 
         self.conv1 = EGATConv(in_channels, 6, heads=5, dropout=dropout)
-        self.bn1 = nn.BatchNorm1d(30)
+        # self.bn1 = nn.BatchNorm1d(30)
 
         self.pconv1 = EGATConv(11, 16)
         self.pool1 = DIFFPool()
@@ -38,7 +38,7 @@ class _EGATConv(torch.nn.Module):
         s, _, _ = self.pconv1(x, edge_index, edge_attr)
         x, edge_index, e = self.conv1(x, edge_index, edge_attr)
         x, edge_index, edge_attr, adj, reg1 = self.pool1(x, adj, s)
-        x = self.bn1(x)
+        # x = self.bn1(x)
 
         s, _, _ = self.pconv2(x, edge_index, edge_attr)
         x, edge_index, e = self.conv2(x, edge_index, edge_attr)
@@ -52,7 +52,7 @@ class _EGATConv(torch.nn.Module):
         # x, edge_index, e = self.conv3(x, edge_index, e)
         # x = self.bn1(x.view(self.B, -1)).view(self.num_nodes * self.B, -1)
 
-        return x, reg1 * 2e-2 + reg2 * 1e-1
+        return x, reg1 * 8e-2 + reg2 * 1e-1
 
     @staticmethod
     def dot(e):
@@ -71,18 +71,18 @@ class EGAT(torch.nn.Module):
         self.B = data.y.shape[0]
         self.num_nodes = int(data.num_nodes / self.B)
 
+        self.emb1 = nn.Linear(3, 1)
+
         self.egatconv_channel1 = _EGATConv(self.num_features, 10, dropout, self.num_nodes, self.B)
         # self.egatconv_channel2 = _EGATConv(self.num_features, 2, dropout, self.num_nodes, self.B)
         # self.egatconv_channel3 = _EGATConv(self.num_features, 2, dropout, self.num_nodes, self.B)
 
-        self.emb1 = nn.Linear(3, 1)
-
         # self.bn1 = nn.BatchNorm1d(2 * self.num_nodes)
         self.fc1 = nn.Linear(4 * 30, 64)
         self.drop1 = nn.Dropout(dropout)
-        self.fc2 = nn.Linear(64, 32)
-        self.drop2 = nn.Dropout(dropout)
-        self.fc3 = nn.Linear(32, 2)
+        self.fc2 = nn.Linear(64, 2)
+        # self.drop2 = nn.Dropout(dropout)
+        # self.fc3 = nn.Linear(32, 2)
 
     def forward(self, x, edge_index, edge_attr, y, adj):
         if x.dim() == 3:
@@ -104,8 +104,8 @@ class EGAT(torch.nn.Module):
         #                                           device=x.device))
         x = x.view(self.B, -1)
         x = self.drop1(F.relu(self.fc1(x)))
-        x = self.drop2(F.relu(self.fc2(x)))
-        x = self.fc3(x)
+        # x = self.drop2(F.relu(self.fc2(x)))
+        x = self.fc2(x)
 
         # reg = torch.tensor([0], dtype=torch.float, device=x.device)
         return x, reg
