@@ -478,15 +478,14 @@ def edge_attr_to_distance_for_data(data):
 def edge_to_adj(edge_index, edge_attr, num_nodes):
     """
     Return:
-        adj: Adjacency matrix with shape [num_edge_features, num_nodes, num_nodes]
+        adj: Adjacency matrix with shape [num_nodes, num_nodes]
     """
     # change divice placement to speed up
-    adj = torch.zeros(num_nodes, num_nodes, edge_attr.shape[-1])
-    i = 0
-    for (u, v) in edge_index.transpose(0, 1):
+    adj = torch.zeros(num_nodes, num_nodes, edge_attr.shape[1])
+    for i, (u, v) in enumerate(edge_index.transpose(0, 1)):
         adj[u][v] = edge_attr[i]
         adj[v][u] = edge_attr[i]
-        i = i + 1
+    adj = adj.squeeze(-1) if adj.shape[-1] == 1 else adj
     return adj
 
 

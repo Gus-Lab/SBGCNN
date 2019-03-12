@@ -82,22 +82,6 @@ def doubly_stochastic_normlization_d(edge_index, edge_attr, num_nodes):
     return edge_attr
 
 
-def edge_to_adj(edge_index, edge_attr, num_nodes):
-    """
-    Return:
-        adj: Adjacency matrix with shape [num_edge_features, num_nodes, num_nodes]
-    """
-    # change divice placement to speed up
-    adj = torch.zeros(num_nodes, num_nodes, edge_attr.shape[-1])
-    i = 0
-    for (u, v) in edge_index.transpose(0, 1):
-        adj[u][v] = edge_attr[i]
-        adj[v][u] = edge_attr[i]
-        i = i + 1
-    adj = adj.permute(2, 0, 1)
-    return adj
-
-
 def networkx_to_data(G):
     """
     convert a networkx graph to torch geometric data
