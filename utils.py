@@ -56,7 +56,7 @@ def adj_to_edge_index(adj):
     Args:
         adj: <class Tensor> Adjacency matrix with shape [num_nodes, num_nodes]
     """
-    G = nx.from_numpy_array(adj.detach().cpu().numpy())
+    G = nx.from_numpy_array(np.ones_like(adj.detach().cpu().numpy()))
     A = nx.to_scipy_sparse_matrix(G)
     A = A.tocoo()
     edge_index = torch.tensor(np.stack([A.row, A.col]), dtype=torch.long)

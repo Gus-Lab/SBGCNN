@@ -52,7 +52,7 @@ class _EGATConv(torch.nn.Module):
         # x, edge_index, e = self.conv3(x, edge_index, e)
         # x = self.bn1(x.view(self.B, -1)).view(self.num_nodes * self.B, -1)
 
-        return x, reg1 + reg2
+        return x, reg1 * 2e-2 + reg2 * 1e-1
 
     @staticmethod
     def dot(e):
@@ -78,11 +78,11 @@ class EGAT(torch.nn.Module):
         self.emb1 = nn.Linear(3, 1)
 
         # self.bn1 = nn.BatchNorm1d(2 * self.num_nodes)
-        self.fc1 = nn.Linear(4 * 30, 8)
+        self.fc1 = nn.Linear(4 * 30, 64)
         self.drop1 = nn.Dropout(dropout)
-        self.fc2 = nn.Linear(8, 6)
+        self.fc2 = nn.Linear(64, 32)
         self.drop2 = nn.Dropout(dropout)
-        self.fc3 = nn.Linear(6, 2)
+        self.fc3 = nn.Linear(32, 2)
 
     def forward(self, x, edge_index, edge_attr, y, adj):
         if x.dim() == 3:
