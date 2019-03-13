@@ -309,32 +309,48 @@ def create_and_save_data(scale, fs_subjects_dir_path, atlas_sheet_path,
     node_attr_array = to_node_attr_array(subject, fs_subjects_dir_path, atlas_sheet_path, scale)
     time_series = to_time_series(subject, fsl_subjects_dir_path, atlas_dir_path, scale)
 
-    # TODO: redundant data argumentation ?
-    combo_list = resample_mm_N_choose_n(time_series)
-    shuffle(combo_list)
-    for combo in combo_list:  # 3 channels in 1 comb (RESTBLOCK IPBLOCK UNKNOWN)
-        corr_list = [correlation_measure.fit_transform([cm])[0] for cm in combo]
-        # convert correlation to distance between [0, 1]
-        # corr_list = [1 - np.sqrt((1 - corr) / 2) for corr in corr_list]
-        # corr_list = [remove_least_k_percent(np.abs(corr), k=0.4) for corr in corr_list]  # abs
-        all_corr = np.stack(corr_list, axis=-1)
+    # # TODO: redundant data argumentation ?
+    # combo_list = resample_mm_N_choose_n(time_series)
+    # shuffle(combo_list)
+    # for combo in combo_list:  # 3 channels in 1 comb (RESTBLOCK IPBLOCK UNKNOWN)
+    #     corr_list = [correlation_measure.fit_transform([cm])[0] for cm in combo]
+    #     # convert correlation to distance between [0, 1]
+    #     # corr_list = [1 - np.sqrt((1 - corr) / 2) for corr in corr_list]
+    #     # corr_list = [remove_least_k_percent(np.abs(corr), k=0.4) for corr in corr_list]  # abs
+    #     all_corr = np.stack(corr_list, axis=-1)
+    #
+    #     # create torch_geometric Data
+    #     G = nx.from_numpy_array(np.ones_like(corr_list[0]))
+    #     A = nx.to_scipy_sparse_matrix(G)
+    #     adj = A.tocoo()
+    #     edge_index = np.stack([adj.row, adj.col])
+    #     edge_attr = np.ones((len(adj.row), len(corr_list)))  # add edge_attr later
+    #     # for i in range(len(adj.row)):
+    #     #     edge_attr[i] = all_corr[adj.row[i], adj.col[i]]
+    #
+    #     data = Data(x=torch.tensor(node_attr_array, dtype=torch.float),
+    #                 edge_index=torch.tensor(edge_index, dtype=torch.long),
+    #                 edge_attr=torch.tensor(edge_attr, dtype=torch.float),
+    #                 y=torch.tensor([0]) if subject.startswith('2') else torch.tensor([1]))
+    #     data.adj = torch.tensor(all_corr, dtype=torch.float)
+    #     data.ts = torch.tensor(time_series)
+    #     data_list.append(data)
 
-        # create torch_geometric Data
-        G = nx.from_numpy_array(np.ones_like(corr_list[0]))
-        A = nx.to_scipy_sparse_matrix(G)
-        adj = A.tocoo()
-        edge_index = np.stack([adj.row, adj.col])
-        edge_attr = np.ones((len(adj.row), len(corr_list)))  # add edge_attr later
-        # for i in range(len(adj.row)):
-        #     edge_attr[i] = all_corr[adj.row[i], adj.col[i]]
+    corr = correlation_measure.fit_transform([time_series])[0]
+    G = nx.from_numpy_array(np.ones_like(corr))
+    A = nx.to_scipy_sparse_matrix(G)
+    adj = A.tocoo()
 
-        data = Data(x=torch.tensor(node_attr_array, dtype=torch.float),
-                    edge_index=torch.tensor(edge_index, dtype=torch.long),
-                    edge_attr=torch.tensor(edge_attr, dtype=torch.float),
-                    y=torch.tensor([0]) if subject.startswith('2') else torch.tensor([1]))
-        data.adj = torch.tensor(all_corr, dtype=torch.float)
-        data.ts = torch.tensor(time_series)
-        data_list.append(data)
+    edge_index = np.stack([adj.row, adj.col])
+    edge_attr = np.ones((len(adj.row), 1))  # add edge_attr later
+
+    data = Data(x=torch.tensor(node_attr_array, dtype=torch.float),
+                edge_index=torch.tensor(edge_index, dtype=torch.long),
+                edge_attr=torch.tensor(edge_attr, dtype=torch.float),
+                y=torch.tensor([0]) if subject.startswith('2') else torch.tensor([1]))
+    data.adj = torch.tensor(corr, dtype=torch.float)
+    data.ts = torch.tensor(time_series)
+    data_list.append(data)
 
     subject_tmp_file_path = osp.join(tmp_dir_path, '{}.pickle'.format(subject))
     print("Saving {} samples on subject {}".format(len(data_list), subject))
@@ -468,6 +484,7 @@ def doubly_stochastic_normlization(data):
         edge_attr[u] = E_i_j
     return edge_attr
 
+
 def edge_to_adj(edge_index, edge_attr, num_nodes):
     """
     Return:
@@ -480,6 +497,7 @@ def edge_to_adj(edge_index, edge_attr, num_nodes):
         adj[v][u] = edge_attr[i]
     adj = adj.squeeze(-1) if adj.shape[-1] == 1 else adj
     return adj.to(edge_attr.device)
+
 
 def adj_to_edge_attr(data):
     for i, (u, v) in enumerate(data.edge_index.t()):
@@ -528,7 +546,7 @@ def _concat_adj_statistics_to_node(data):
     :return:
     """
     from scipy.stats import kurtosis, skew
-    adj = data.adj.sum(dim=-1)
+    adj = data.adj.sum(dim=-1) if data.adj.dim() == 3 else data.adj
     mean = adj.mean(dim=-1)
     std = adj.std(dim=-1)
     skewness = torch.tensor(skew(adj, axis=-1))

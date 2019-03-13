@@ -71,37 +71,21 @@ class EGAT(torch.nn.Module):
         self.B = data.y.shape[0]
         self.num_nodes = int(data.num_nodes / self.B)
 
-        self.emb1 = nn.Linear(3, 1)
-
         self.egatconv_channel1 = _EGATConv(self.num_features, 10, dropout, self.num_nodes, self.B)
-        # self.egatconv_channel2 = _EGATConv(self.num_features, 2, dropout, self.num_nodes, self.B)
-        # self.egatconv_channel3 = _EGATConv(self.num_features, 2, dropout, self.num_nodes, self.B)
 
-        # self.emb2 = nn.Linear(20, 5)
         self.fc1 = nn.Linear(4 * 30, 6)
         self.drop1 = nn.Dropout(dropout)
         self.fc2 = nn.Linear(6 , 2)
-        # self.drop2 = nn.Dropout(dropout)
-        # self.fc3 = nn.Linear(32, 2)
 
     def forward(self, x, edge_index, edge_attr, y, adj):
         if x.dim() == 3:
             x, edge_index, edge_attr, y = \
                 x.squeeze(0), edge_index.squeeze(0), edge_attr.squeeze(0), y.squeeze(0)
-        adj = self.emb1(adj).squeeze(-1)
-        edge_attr = self.emb1(edge_attr)
+
         if adj.dim() == 3:
             adj = adj.squeeze(0)
 
-        # x = torch.stack([
-        #     self.egatconv_channel1(x, edge_index, edge_attr[:, 0].view(-1, 1)),
-        #     self.egatconv_channel2(x, edge_index, edge_attr[:, 1].view(-1, 1)),
-        #     self.egatconv_channel3(x, edge_index, edge_attr[:, 2].view(-1, 1))
-        # ], dim=-1)
         x, reg = self.egatconv_channel1(x, edge_index, edge_attr, adj)
-        # x = self.emb2(x).squeeze(-1)
-        # x = global_add_pool(x, batch=torch.tensor([i for _ in range(self.num_nodes) for i in range(self.B)],
-        #                                           device=x.device))
         x = x.view(self.B, -1)
         x = self.drop1(F.relu(self.fc1(x)))
         # x = self.drop2(F.relu(self.fc2(x)))
