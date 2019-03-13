@@ -16,9 +16,9 @@ class Baseline(torch.nn.Module):
         self.num_nodes = int(data.num_nodes / self.B)
         self.emb1 = nn.Linear(11, 2)
         # self.bn1 = nn.BatchNorm1d(16)
-        self.fc1 = nn.Linear(2 * self.num_nodes, 6)
+        self.fc1 = nn.Linear(2 * self.num_nodes, 32)
         self.drop1 = nn.Dropout(dropout)
-        self.fc2 = nn.Linear(6, 2)
+        self.fc2 = nn.Linear(32, 2)
         # self.drop2 = nn.Dropout(dropout)
         # self.fc3 = nn.Linear(8, 2)
 

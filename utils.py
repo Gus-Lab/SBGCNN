@@ -5,6 +5,8 @@ import os.path as osp
 import json, codecs
 import numpy as np
 
+from data.data_utils import edge_to_adj
+
 
 def get_model_log_dir(comment, model_name):
     import socket

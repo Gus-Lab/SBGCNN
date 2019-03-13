@@ -45,8 +45,8 @@ class MmDataset(InMemoryDataset):
 
     @property
     def raw_file_names(self):
-        # mc_filtered_subjects test_subject
-        return ['mc_filtered_subjects', 'FEAT.linear/', 'Fs.subjects/', 'LABELS.xlsx', 'Lausanne/']
+        # mc_filtered_subjects test_subject train_subjects
+        return ['train_subjects', 'FEAT.linear/', 'Fs.subjects/', 'LABELS.xlsx', 'Lausanne/']
 
     @property
     def processed_file_names(self):
@@ -62,7 +62,7 @@ class MmDataset(InMemoryDataset):
         """
         subject_list = [line.strip() for line in
                         codecs.open(osp.join(self.raw_dir, self.raw_file_names[0]), 'r').readlines()]
-        subject_list = phrase_subject_list(subject_list)
+        # subject_list = phrase_subject_list(subject_list)
 
         print("Reading MM data...")
         data_list = read_mm_data(subject_list=subject_list,
@@ -277,7 +277,7 @@ class MmmDataset(Dataset):
 
     def __getitem__(self, index):
         data = self.active_datas[index]
-        return data.x, data.edge_index, data.edge_attr, data.adj, data.y
+        return data.x, data.edge_index, data.edge_attr, data.y, data.adj
 
     def __len__(self):
         return len(self.active_datas)
