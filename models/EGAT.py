@@ -22,23 +22,21 @@ class _EGATConv(torch.nn.Module):
         self.num_nodes = num_nodes
         self.B = batch_size
 
-        self.conv1 = EGATConv(in_channels, 5, heads=4, dropout=dropout)
+        self.conv1 = EGATConv(in_channels, 6, heads=5, dropout=dropout)
         # self.bn1 = nn.BatchNorm1d(30)
-        self.emb1 = nn.Linear(4, 1)
 
         self.pconv1 = EGATConv(11, 16)
         self.pool1 = DIFFPool()
 
-        self.conv2 = EGATConv(20, 20, heads=1, dropout=dropout)
-        self.bn2 = nn.BatchNorm1d(20)
+        self.conv2 = EGATConv(30, 30, heads=1, dropout=dropout)
+        self.bn2 = nn.BatchNorm1d(30)
 
-        self.pconv2 = EGATConv(20, 4)
+        self.pconv2 = EGATConv(30, 4)
         self.pool2 = DIFFPool()
 
     def forward(self, x, edge_index, edge_attr, adj):
+        s, _, _ = self.pconv1(x, edge_index, edge_attr)
         x, edge_index, e = self.conv1(x, edge_index, edge_attr)
-
-        s, _, _ = self.pconv1(x, edge_index, self.emb1(e))
         x, edge_index, edge_attr, adj, reg1 = self.pool1(x, adj, s)
         # x = self.bn1(x)
 
@@ -54,7 +52,7 @@ class _EGATConv(torch.nn.Module):
         # x, edge_index, e = self.conv3(x, edge_index, e)
         # x = self.bn1(x.view(self.B, -1)).view(self.num_nodes * self.B, -1)
 
-        return x, reg1 * 8e-2 + reg2 * 1e-1
+        return x, reg1 * 1e-1 + reg2 * 5e-2
 
     @staticmethod
     def dot(e):
@@ -79,8 +77,8 @@ class EGAT(torch.nn.Module):
         # self.egatconv_channel2 = _EGATConv(self.num_features, 2, dropout, self.num_nodes, self.B)
         # self.egatconv_channel3 = _EGATConv(self.num_features, 2, dropout, self.num_nodes, self.B)
 
-        # self.bn1 = nn.BatchNorm1d(2 * self.num_nodes)
-        self.fc1 = nn.Linear(4 * 20, 6)
+        # self.emb2 = nn.Linear(20, 5)
+        self.fc1 = nn.Linear(4 * 30, 6)
         self.drop1 = nn.Dropout(dropout)
         self.fc2 = nn.Linear(6 , 2)
         # self.drop2 = nn.Dropout(dropout)

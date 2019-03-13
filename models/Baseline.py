@@ -22,13 +22,14 @@ class Baseline(torch.nn.Module):
         # self.drop2 = nn.Dropout(dropout)
         # self.fc3 = nn.Linear(8, 2)
 
-    def forward(self, x, edge_index, edge_attr, y):
+    def forward(self, x, edge_index, edge_attr, y, adj):
         if x.dim() == 3:
             x, edge_index, edge_attr, y = \
                 x.squeeze(0), edge_index.squeeze(0), edge_attr.squeeze(0), y.squeeze(0)
 
         B = y.shape[0]
         x = self.emb1(x).view(B, -1)
+        # x = x.view(B, -1)
         # x = global_add_pool(x, batch=torch.tensor([i for _ in range(self.num_nodes) for i in range(self.B)],
         #                                           device=x.device))
         x = F.relu(self.drop1(self.fc1(x)))

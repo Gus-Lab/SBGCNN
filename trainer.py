@@ -140,6 +140,7 @@ def train_cross_validation(model_cls, dataset, dropout=0.0, lr=1e-3,
                     y = y.view(-1).cuda() if multi_gpus else y
                     loss = criterion(y_hat, y)
                     total_loss = (loss + reg).mean()
+                    # total_loss = loss
 
                     if phase == 'train':
                         optimizer.zero_grad()
