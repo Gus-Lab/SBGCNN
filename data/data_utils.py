@@ -468,13 +468,6 @@ def doubly_stochastic_normlization(data):
         edge_attr[u] = E_i_j
     return edge_attr
 
-
-def edge_attr_to_distance_for_data(data):
-    adj = data.adj
-    adj = 1 - torch.sqrt((1 - adj) / 2)
-    return adj
-
-
 def edge_to_adj(edge_index, edge_attr, num_nodes):
     """
     Return:
@@ -486,16 +479,20 @@ def edge_to_adj(edge_index, edge_attr, num_nodes):
         adj[u][v] = edge_attr[i]
         adj[v][u] = edge_attr[i]
     adj = adj.squeeze(-1) if adj.shape[-1] == 1 else adj
-    return adj
+    return adj.to(edge_attr.device)
+
+def adj_to_edge_attr(data):
+    for i, (u, v) in enumerate(data.edge_index.t()):
+        data.edge_attr[i] = data.adj[u][v]
+    return data.edge_attr
 
 
 def _set_edge_attr_for_data(data):
-    data.adj = edge_attr_to_distance_for_data(data)
+    data.adj = 1 - torch.sqrt((1 - data.adj) / 2)  # to distance
     data.adj = torch.atan(data.adj)  # fisher z-transform
-
-    data.edge_attr = doubly_stochastic_normlization(data)
-    data.adj = edge_to_adj(data.edge_index, data.edge_attr, data.num_nodes)
-
+    data.edge_attr = adj_to_edge_attr(data)
+    # data.edge_attr = doubly_stochastic_normlization(data)
+    # data.adj = edge_to_adj(data.edge_index, data.edge_attr, data.num_nodes)
     return data
 
 

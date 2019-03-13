@@ -191,7 +191,7 @@ class MmDataset(InMemoryDataset):
 
 if __name__ == '__main__':
     mmm = MmDataset('data/', 'MM',
-                    pre_transform=normalize_node_feature_node_wise,
+                    pre_transform=normalize_node_feature_sample_wise_transform,
                     pre_set_missing=set_missing_node_feature,
                     pre_set_edge_attr=set_edge_attr,
                     pre_concat=concat_extra_node_feature,
