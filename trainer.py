@@ -17,6 +17,54 @@ from models import Baseline
 from utils import get_model_log_dir
 
 
+def init_all(model_cls, dataset, dropout=0, lr=1e-3,
+             weight_decay=1e-3, use_gpu=True, multi_gpus=True,
+             distribute=True, comment='', tb_service_loc=None,
+             batch_size=1, num_workers=0, pin_memory=True, cuda_device=None,
+             ddp_port='23333'):
+    """
+
+    :param model_cls:
+    :param dataset:
+    :param dropout:
+    :param lr:
+    :param weight_decay:
+    :param use_gpu:
+    :param multi_gpus:
+    :param distribute:
+    :param comment:
+    :param tb_service_loc:
+    :param batch_size:
+    :param num_workers:
+    :param pin_memory:
+    :param cuda_device:
+    :param ddp_port:
+    :return:
+    """
+    saved_args = locals()
+    if distribute:  # initialize ddp
+        dist.init_process_group('nccl', init_method='tcp://localhost:{}'.format(ddp_port), world_size=1, rank=0)
+    model_name = model_cls.__name__
+    # sample data (torch_geometric Data) to construct model
+    sample_data = dataset._get(0)
+
+    if not cuda_device:
+        device = torch.device('cuda' if torch.cuda.is_available() and use_gpu else 'cpu')
+    else:
+        device = cuda_device
+    device_count = torch.cuda.device_count() if multi_gpus else 1
+    if device_count > 1:
+        print("Let's use", device_count, "GPUs!")
+
+    log_dir_base = get_model_log_dir(comment, model_name)
+    if tb_service_loc is not None:
+        print("TensorBoard available at http://{1}/#scalars&regexInput={0}".format(
+            log_dir_base, tb_service_loc))
+    else:
+        print("Please set up your TensorBoard")
+
+    criterion = nn.CrossEntropyLoss()
+
 def train_cross_validation(model_cls, dataset, dropout=0.0, lr=1e-3,
                            weight_decay=1e-2, num_epochs=200, n_splits=5,
                            use_gpu=True, multi_gpus=False, distribute=False,
@@ -75,34 +123,29 @@ def train_cross_validation(model_cls, dataset, dropout=0.0, lr=1e-3,
                                              desc='models', leave=False):
         fold += 1
         print("creating dataloader tor fold {}".format(fold))
-        with timeit(name='create dataloader'):
-            model = model_cls(sample_data, dropout=dropout)
+        model = model_cls(sample_data, dropout=dropout)
 
-            collate_fn = partial(dataset.collate_fn_multi_gpu, device_count) if multi_gpus else dataset.collate_fn
-            train_dataloader = DataLoader(dataset.set_active_data(train_idx),
-                                          shuffle=True,
-                                          batch_size=batch_size * device_count,
-                                          num_workers=num_workers,
-                                          pin_memory=pin_memory)
-            test_dataloader = DataLoader(dataset.set_active_data(test_idx),
-                                         shuffle=True,
-                                         batch_size=batch_size * device_count,
-                                         num_workers=num_workers,
-                                         pin_memory=pin_memory)
+        collate_fn = partial(dataset.collate_fn_multi_gpu, device_count) if multi_gpus else dataset.collate_fn
+        train_dataloader = DataLoader(dataset.set_active_data(train_idx),
+                                      shuffle=True,
+                                      batch_size=batch_size * device_count,
+                                      num_workers=num_workers,
+                                      pin_memory=pin_memory)
+        test_dataloader = DataLoader(dataset.set_active_data(test_idx),
+                                     shuffle=True,
+                                     batch_size=batch_size * device_count,
+                                     num_workers=num_workers,
+                                     pin_memory=pin_memory)
 
-            writer = SummaryWriter(log_dir=osp.join('runs', log_dir_base + str(fold)))
-            if fold == 1:
-                print(model)
-                writer.add_text('model_summary', model.__repr__())
-                writer.add_text('training_args', str(saved_args))
-            optimizer = torch.optim.Adam(model.parameters(), lr=lr, betas=(0.9, 0.999),
-                                         eps=1e-08, weight_decay=weight_decay, amsgrad=False)
-            # optimizer = torch.optim.SGD(model.parameters(), lr=lr, weight_decay=weight_decay)
-
-        # add_graph is buggy, who want to fix it?
-        # > this bug is complicated... something related to onnx
-        # > https://pytorch.org/docs/stable/onnx.html
-        # writer.add_graph(model, input_to_model=dataset.__getitem__(0), verbose=True)
+        writer = SummaryWriter(log_dir=osp.join('runs', log_dir_base + str(fold)))
+        model_save_dir = osp.join('saved_models', log_dir_base + str(fold))
+        if fold == 1:
+            print(model)
+            writer.add_text('model_summary', model.__repr__())
+            writer.add_text('training_args', str(saved_args))
+        optimizer = torch.optim.Adam(model.parameters(), lr=lr, betas=(0.9, 0.999),
+                                     eps=1e-08, weight_decay=weight_decay, amsgrad=False)
+        # optimizer = torch.optim.SGD(model.parameters(), lr=lr, weight_decay=weight_decay)
 
         if distribute:
             model = nn.parallel.DistributedDataParallel(model.cuda())
@@ -111,6 +154,7 @@ def train_cross_validation(model_cls, dataset, dropout=0.0, lr=1e-3,
         elif use_gpu:
             model = model.to(device)
 
+        best_map = 0.0
         for epoch in tqdm_notebook(range(1, num_epochs + 1), desc='Epoch', leave=False):
 
             for phase in ['train', 'validation']:
@@ -185,6 +229,15 @@ def train_cross_validation(model_cls, dataset, dropout=0.0, lr=1e-3,
                 writer.add_histogram('hist/{}_yhat_1'.format(phase),
                                      epoch_yhat_1,
                                      epoch)
+
+                if phase == 'validation':
+                    model_save_path = model_save_dir + '-{}-{}-{:.3f}-{:.3f}'.format(model_name, epoch, epoch_acc, epoch_nll_loss)
+                    if epoch_acc > best_map:
+                        best_map = epoch_acc
+                        model_save_path = model_save_path + '-best'
+                        torch.save(model.state_dict(), model_save_path)
+                    elif epoch % 5 == 0:
+                        torch.save(model.state_dict(), model_save_path)
 
     print("Done !")
 

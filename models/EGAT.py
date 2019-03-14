@@ -73,9 +73,9 @@ class EGAT(torch.nn.Module):
 
         self.egatconv_channel1 = _EGATConv(self.num_features, 10, dropout, self.num_nodes, self.B)
 
-        self.fc1 = nn.Linear(4 * 30, 6)
+        self.fc1 = nn.Linear(4 * 30, 128)
         self.drop1 = nn.Dropout(dropout)
-        self.fc2 = nn.Linear(6 , 2)
+        self.fc2 = nn.Linear(128 , 2)
 
     def forward(self, x, edge_index, edge_attr, y, adj):
         if x.dim() == 3:
