@@ -197,7 +197,7 @@ if __name__ == '__main__':
                     pre_concat=concat_extra_node_feature,
                     batch_size=1,
                     r=5,
-                    force=True
+                    force=False
                     )
     mmm.__getitem__(0)
     print()
