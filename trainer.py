@@ -17,6 +17,7 @@ from dataset import MmDataset
 from models import Baseline
 from utils import get_model_log_dir
 import time
+import numpy as np
 
 
 def train_cross_validation(model_cls, dataset, dropout=0.0, lr=1e-3,
@@ -52,8 +53,7 @@ def train_cross_validation(model_cls, dataset, dropout=0.0, lr=1e-3,
     """
     saved_args = locals()
     seed = time.time()
-    torch.manual_seed(seed)
-    saved_args['seed'] = seed
+    saved_args['random_seed'] = seed
 
     if distribute and not torch.distributed.is_initialized():  # initialize ddp
         dist.init_process_group('nccl', init_method='tcp://localhost:{}'.format(ddp_port), world_size=1, rank=0)
@@ -88,6 +88,10 @@ def train_cross_validation(model_cls, dataset, dropout=0.0, lr=1e-3,
             if fold != fold_no:
                 continue
         print("creating dataloader tor fold {}".format(fold))
+        torch.manual_seed(seed)
+        np.random.seed(seed)
+        if use_gpu:
+            torch.cuda.manual_seed_all(seed)
         model = model_cls(sample_data, dropout=dropout)
 
         collate_fn = partial(dataset.collate_fn_multi_gpu, device_count) if multi_gpus else dataset.collate_fn
