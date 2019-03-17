@@ -221,7 +221,7 @@ def train_cross_validation(model_cls, dataset, dropout=0.0, lr=1e-3,
                         model_save_path = model_save_path + '-best'
 
                     for th, pfix in zip([0.8, 0.75, 0.7, 0.5, 0.0], ['-perfect', '-great', '-good', '-bad', '-miss']):
-                        if accuracy > th:
+                        if accuracy >= th:
                             model_save_path += pfix
                             break
 
