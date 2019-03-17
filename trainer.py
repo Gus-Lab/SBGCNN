@@ -1,4 +1,5 @@
 import os.path as osp
+import sklearn
 from functools import partial
 
 import torch
@@ -15,56 +16,7 @@ from data.data_utils import normalize_node_feature_subject_wise, concat_extra_no
 from dataset import MmDataset
 from models import Baseline
 from utils import get_model_log_dir
-
-
-def init_all(model_cls, dataset, dropout=0, lr=1e-3,
-             weight_decay=1e-3, use_gpu=True, multi_gpus=True,
-             distribute=True, comment='', tb_service_loc=None,
-             batch_size=1, num_workers=0, pin_memory=True, cuda_device=None,
-             ddp_port='23333', fold_no=None):
-    """
-
-    :param fold_no:
-    :param model_cls:
-    :param dataset:
-    :param dropout:
-    :param lr:
-    :param weight_decay:
-    :param use_gpu:
-    :param multi_gpus:
-    :param distribute:
-    :param comment:
-    :param tb_service_loc:
-    :param batch_size:
-    :param num_workers:
-    :param pin_memory:
-    :param cuda_device:
-    :param ddp_port:
-    :return:
-    """
-    saved_args = locals()
-    if distribute:  # initialize ddp
-        dist.init_process_group('nccl', init_method='tcp://localhost:{}'.format(ddp_port), world_size=1, rank=0)
-    model_name = model_cls.__name__
-    # sample data (torch_geometric Data) to construct model
-    sample_data = dataset._get(0)
-
-    if not cuda_device:
-        device = torch.device('cuda' if torch.cuda.is_available() and use_gpu else 'cpu')
-    else:
-        device = cuda_device
-    device_count = torch.cuda.device_count() if multi_gpus else 1
-    if device_count > 1:
-        print("Let's use", device_count, "GPUs!")
-
-    log_dir_base = get_model_log_dir(comment, model_name)
-    if tb_service_loc is not None:
-        print("TensorBoard available at http://{1}/#scalars&regexInput={0}".format(
-            log_dir_base, tb_service_loc))
-    else:
-        print("Please set up your TensorBoard")
-
-    criterion = nn.CrossEntropyLoss()
+import time
 
 
 def train_cross_validation(model_cls, dataset, dropout=0.0, lr=1e-3,
@@ -72,9 +24,12 @@ def train_cross_validation(model_cls, dataset, dropout=0.0, lr=1e-3,
                            use_gpu=True, multi_gpus=False, distribute=False,
                            comment='', tb_service_loc=None, batch_size=1,
                            num_workers=0, pin_memory=False, cuda_device=None,
-                           ddp_port='23456', fold_no=None):
+                           ddp_port='23456', fold_no=None, saved_model_path=None,
+                           device_ids=None):
     """
     TODO: multi-gpu support
+    :param device_ids:
+    :param saved_model_path:
     :param fold_no:
     :param ddp_port:
     :param distribute: DDP
@@ -96,7 +51,11 @@ def train_cross_validation(model_cls, dataset, dropout=0.0, lr=1e-3,
     :return:
     """
     saved_args = locals()
-    if distribute:  # initialize ddp
+    seed = time.time()
+    torch.manual_seed(seed)
+    saved_args['seed'] = seed
+
+    if distribute and not torch.distributed.is_initialized():  # initialize ddp
         dist.init_process_group('nccl', init_method='tcp://localhost:{}'.format(ddp_port), world_size=1, rank=0)
     model_name = model_cls.__name__
     # sample data (torch_geometric Data) to construct model
@@ -154,16 +113,19 @@ def train_cross_validation(model_cls, dataset, dropout=0.0, lr=1e-3,
         # optimizer = torch.optim.SGD(model.parameters(), lr=lr, weight_decay=weight_decay)
 
         if distribute:
-            model = nn.parallel.DistributedDataParallel(model.cuda())
+            model = nn.parallel.DistributedDataParallel(model.cuda(), device_ids=device_ids)
         elif multi_gpus and use_gpu:
             model = nn.DataParallel(model).to(device)
         elif use_gpu:
             model = model.to(device)
 
+        if saved_model_path is not None:
+            model.load_state_dict(torch.load(saved_model_path))
+
         best_map = 0.0
         for epoch in tqdm_notebook(range(1, num_epochs + 1), desc='Epoch', leave=False):
 
-            for phase in ['train', 'validation']:
+            for phase in ['validation', 'train']:
 
                 if phase == 'train':
                     model.train()
@@ -180,10 +142,12 @@ def train_cross_validation(model_cls, dataset, dropout=0.0, lr=1e-3,
                 running_reg_loss = 0.0
                 running_nll_loss = 0.0
                 epoch_yhat_0, epoch_yhat_1 = torch.tensor([]), torch.tensor([])
+                epoch_label, epoch_predicted = torch.tensor([]), torch.tensor([])
 
                 for x, edge_index, edge_attr, y, adj in tqdm_notebook(dataloader, desc=phase, leave=False):
 
-                    if use_gpu and not multi_gpus:
+                    if (use_gpu and not multi_gpus) or (distribute and device_ids):
+                        device = device_ids[0] if distribute else device
                         x, edge_index, edge_attr, y, adj = \
                             x.to(device), edge_index.to(device), edge_attr.to(device), y.to(device), adj.to(device)
 
@@ -201,6 +165,7 @@ def train_cross_validation(model_cls, dataset, dropout=0.0, lr=1e-3,
                     _, predicted = torch.max(y_hat, 1)
                     # _, label = torch.max(y, 1)
                     label = y
+
                     running_nll_loss += loss.item()
                     running_total_loss += total_loss.item()
                     running_reg_loss += reg.sum().item()
@@ -208,22 +173,30 @@ def train_cross_validation(model_cls, dataset, dropout=0.0, lr=1e-3,
 
                     epoch_yhat_0 = torch.cat([epoch_yhat_0, y_hat[:, 0].detach().view(-1).cpu()])
                     epoch_yhat_1 = torch.cat([epoch_yhat_1, y_hat[:, 1].detach().view(-1).cpu()])
+                    epoch_label = torch.cat([epoch_label, label.detach().cpu().float()])
+                    epoch_predicted = torch.cat([epoch_predicted, predicted.detach().cpu().float()])
 
+                precision = sklearn.metrics.precision_score(epoch_label, epoch_predicted)
+                recall = sklearn.metrics.recall_score(epoch_label, epoch_predicted)
+                f1_score = sklearn.metrics.f1_score(epoch_label, epoch_predicted)
+                accuracy = sklearn.metrics.accuracy_score(epoch_label, epoch_predicted)
                 epoch_total_loss = running_total_loss / dataloader.__len__()
                 epoch_nll_loss = running_nll_loss / dataloader.__len__()
-                epoch_acc = running_corrects / dataloader.dataset.__len__() / dataloader.dataset.batch_size
                 epoch_reg_loss = running_reg_loss / dataloader.dataset.__len__()
-
-                # printing statement cause tqdm to buggy in jupyter notebook
-                # if epoch % 5 == 0:
-                #     print("[Model {0} Epoch {1}]\tLoss: {2:.3f}\tAccuracy: {3:.3f}\t[{4}]".format(
-                #         fold, epoch, epoch_total_loss, epoch_acc, phase))
 
                 writer.add_scalars('nll_loss',
                                    {'{}_nll_loss'.format(phase): epoch_nll_loss},
                                    epoch)
                 writer.add_scalars('accuracy',
-                                   {'{}_accuracy'.format(phase): epoch_acc},
+                                   {'{}_accuracy'.format(phase): accuracy},
+                                   epoch)
+                writer.add_scalars('{}_APRF'.format(phase),
+                                   {
+                                       'accuracy': accuracy,
+                                       'precision': precision,
+                                       'recall': recall,
+                                       'f1_score': f1_score
+                                   },
                                    epoch)
                 if epoch_reg_loss != 0:
                     writer.add_scalars('reg_loss'.format(phase),
@@ -237,11 +210,17 @@ def train_cross_validation(model_cls, dataset, dropout=0.0, lr=1e-3,
                                      epoch)
 
                 if phase == 'validation':
-                    model_save_path = model_save_dir + '-{}-{}-{:.3f}-{:.3f}'.format(model_name, epoch, epoch_acc,
+                    model_save_path = model_save_dir + '-{}-{}-{:.3f}-{:.3f}'.format(model_name, epoch, accuracy,
                                                                                      epoch_nll_loss)
-                    if epoch_acc > best_map:
-                        best_map = epoch_acc
+                    if accuracy > best_map:
+                        best_map = accuracy
                         model_save_path = model_save_path + '-best'
+
+                    for th, pfix in zip([0.8, 0.75, 0.7, 0.5, 0.0], ['-perfect', '-great', '-good', '-bad', '-miss']):
+                        if accuracy > th:
+                            model_save_path += pfix
+                            break
+
                     torch.save(model.state_dict(), model_save_path)
 
     print("Done !")
