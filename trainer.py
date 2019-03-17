@@ -52,7 +52,7 @@ def train_cross_validation(model_cls, dataset, dropout=0.0, lr=1e-3,
     :return:
     """
     saved_args = locals()
-    seed = time.time()
+    seed = int(time.time())
     saved_args['random_seed'] = seed
 
     if distribute and not torch.distributed.is_initialized():  # initialize ddp
