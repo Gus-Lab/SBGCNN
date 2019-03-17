@@ -21,9 +21,10 @@ def init_all(model_cls, dataset, dropout=0, lr=1e-3,
              weight_decay=1e-3, use_gpu=True, multi_gpus=True,
              distribute=True, comment='', tb_service_loc=None,
              batch_size=1, num_workers=0, pin_memory=True, cuda_device=None,
-             ddp_port='23333'):
+             ddp_port='23333', fold_no=None):
     """
 
+    :param fold_no:
     :param model_cls:
     :param dataset:
     :param dropout:
@@ -65,14 +66,16 @@ def init_all(model_cls, dataset, dropout=0, lr=1e-3,
 
     criterion = nn.CrossEntropyLoss()
 
+
 def train_cross_validation(model_cls, dataset, dropout=0.0, lr=1e-3,
                            weight_decay=1e-2, num_epochs=200, n_splits=5,
                            use_gpu=True, multi_gpus=False, distribute=False,
                            comment='', tb_service_loc=None, batch_size=1,
                            num_workers=0, pin_memory=False, cuda_device=None,
-                           ddp_port='23456'):
+                           ddp_port='23456', fold_no=None):
     """
     TODO: multi-gpu support
+    :param fold_no:
     :param ddp_port:
     :param distribute: DDP
     :param cuda_device:
@@ -122,6 +125,9 @@ def train_cross_validation(model_cls, dataset, dropout=0.0, lr=1e-3,
                                                          list(range(dataset.__len__()))),
                                              desc='models', leave=False):
         fold += 1
+        if fold_no is not None:
+            if fold != fold_no:
+                continue
         print("creating dataloader tor fold {}".format(fold))
         model = model_cls(sample_data, dropout=dropout)
 
@@ -231,13 +237,12 @@ def train_cross_validation(model_cls, dataset, dropout=0.0, lr=1e-3,
                                      epoch)
 
                 if phase == 'validation':
-                    model_save_path = model_save_dir + '-{}-{}-{:.3f}-{:.3f}'.format(model_name, epoch, epoch_acc, epoch_nll_loss)
+                    model_save_path = model_save_dir + '-{}-{}-{:.3f}-{:.3f}'.format(model_name, epoch, epoch_acc,
+                                                                                     epoch_nll_loss)
                     if epoch_acc > best_map:
                         best_map = epoch_acc
                         model_save_path = model_save_path + '-best'
-                        torch.save(model.state_dict(), model_save_path)
-                    elif epoch % 5 == 0:
-                        torch.save(model.state_dict(), model_save_path)
+                    torch.save(model.state_dict(), model_save_path)
 
     print("Done !")
 
