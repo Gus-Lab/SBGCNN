@@ -108,7 +108,7 @@ def train_cross_validation(model_cls, dataset, dropout=0.0, lr=1e-3,
 
         writer = SummaryWriter(log_dir=osp.join('runs', log_dir_base + str(fold)))
         model_save_dir = osp.join('saved_models', log_dir_base + str(fold))
-        if fold == 1:
+        if fold == 1 or fold_no is not None:
             print(model)
             writer.add_text('model_summary', model.__repr__())
             writer.add_text('training_args', str(saved_args))
