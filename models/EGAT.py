@@ -13,44 +13,46 @@ class _EGATConv(torch.nn.Module):
                  out_channels,
                  dropout,
                  num_nodes,
-                 batch_size
+                 batch_size,
+                 writer
                  ):
         super(_EGATConv, self).__init__()
+        self.writer = writer
         self.in_channels = in_channels
         self.out_channels = out_channels
         self.dropout = dropout
         self.num_nodes = num_nodes
         self.B = batch_size
 
-        self.conv1 = EGATConv(in_channels, 6, heads=5, dropout=dropout)
-        # self.bn1 = nn.BatchNorm1d(30)
+        self.conv1 = EGATConv(in_channels, 5, heads=4, dropout=dropout)
 
-        self.pconv1 = EGATConv(11, 16)
+        self.conv2 = EGATConv(20, 20, heads=1, dropout=dropout)
+        self.bn2 = nn.BatchNorm1d(20)
+
+        self.pconv1 = EGATConv(20, 16)
         self.pool1 = DIFFPool()
 
-        self.conv2 = EGATConv(30, 30, heads=1, dropout=dropout)
-        self.bn2 = nn.BatchNorm1d(30)
-
-        self.pconv2 = EGATConv(30, 4)
+        self.pconv2 = EGATConv(20, 4)
         self.pool2 = DIFFPool()
 
+
     def forward(self, x, edge_index, edge_attr, adj):
-        s, _, _ = self.pconv1(x, edge_index, edge_attr)
         x, edge_index, e = self.conv1(x, edge_index, edge_attr)
-        x, edge_index, edge_attr, adj, reg1 = self.pool1(x, adj, s)
+        e = self.dot(e).unsqueeze(-1)
         # x = self.bn1(x)
-
-        s, _, _ = self.pconv2(x, edge_index, edge_attr)
-        x, edge_index, e = self.conv2(x, edge_index, edge_attr)
-        x, edge_index, edge_attr, adj, reg2 = self.pool2(x, adj, s)
+        self.writer.add_histogram('conv1_x_std', x.std(dim=0))
+        x, edge_index, e = self.conv2(x, edge_index, e)
+        e = self.dot(e).unsqueeze(-1)
         x = self.bn2(x)
+        self.writer.add_histogram('conv2_x_std', x.std(dim=0))
 
-        # s, _, _ = self.pconv3(x, edge_index, edge_attr)
-        # x, edge_index, edge_attr, adj, reg3 = self.pool3(x, adj, s)
 
-        # e = self.dot(e).unsqueeze(-1)
-        # x, edge_index, e = self.conv3(x, edge_index, e)
-        # x = self.bn1(x.view(self.B, -1)).view(self.num_nodes * self.B, -1)
+        s, _, _ = self.pconv1(x, edge_index, edge_attr)
+        x, edge_index, edge_attr, adj, reg1 = self.pool1(x, adj, s)
+        self.writer.add_histogram('pool1_x_std', x.std(dim=0))
+        s, _, _ = self.pconv2(x, edge_index, edge_attr)
+        x, edge_index, edge_attr, adj, reg2 = self.pool2(x, adj, s)
+        self.writer.add_histogram('pool2_x_std', x.std(dim=0))
 
         return x, reg1 * 1e-1 + reg2 * 5e-2
 
@@ -64,16 +66,17 @@ class _EGATConv(torch.nn.Module):
 
 
 class EGAT(torch.nn.Module):
-    def __init__(self, data, dropout=0):
+    def __init__(self, data, writer, dropout=0):
         super(EGAT, self).__init__()
+        self.writer = writer
         self.num_features = data.num_features
         self.edge_attr_dim = data.edge_attr.shape[-1]
         self.B = data.y.shape[0]
         self.num_nodes = int(data.num_nodes / self.B)
 
-        self.egatconv_channel1 = _EGATConv(self.num_features, 10, dropout, self.num_nodes, self.B)
+        self.egatconv_channel1 = _EGATConv(self.num_features, 10, dropout, self.num_nodes, self.B, self.writer)
 
-        self.fc1 = nn.Linear(4 * 30, 32)
+        self.fc1 = nn.Linear(4 * 20, 32)
         self.drop1 = nn.Dropout(dropout)
         self.fc2 = nn.Linear(32, 2)
 

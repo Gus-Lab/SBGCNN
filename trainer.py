@@ -88,12 +88,15 @@ def train_cross_validation(model_cls, dataset, dropout=0.0, lr=1e-3,
         if fold_no is not None:
             if fold != fold_no:
                 continue
+        writer = SummaryWriter(log_dir=osp.join('runs', log_dir_base + str(fold)))
+        model_save_dir = osp.join('saved_models', log_dir_base + str(fold))
+
         print("creating dataloader tor fold {}".format(fold))
         torch.manual_seed(seed)
         np.random.seed(seed)
         if use_gpu:
             torch.cuda.manual_seed_all(seed)
-        model = model_cls(sample_data, dropout=dropout)
+        model = model_cls(sample_data, writer, dropout=dropout)
 
         collate_fn = partial(dataset.collate_fn_multi_gpu, device_count) if multi_gpus else dataset.collate_fn
         train_dataloader = DataLoader(dataset.set_active_data(train_idx),
@@ -107,8 +110,6 @@ def train_cross_validation(model_cls, dataset, dropout=0.0, lr=1e-3,
                                      num_workers=num_workers,
                                      pin_memory=pin_memory)
 
-        writer = SummaryWriter(log_dir=osp.join('runs', log_dir_base + str(fold)))
-        model_save_dir = osp.join('saved_models', log_dir_base + str(fold))
         if fold == 1 or fold_no is not None:
             print(model)
             writer.add_text('model_summary', model.__repr__())
