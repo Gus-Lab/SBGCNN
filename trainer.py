@@ -127,10 +127,10 @@ def train_cross_validation(model_cls, dataset, dropout=0.0, lr=1e-3,
         if saved_model_path is not None:
             model.load_state_dict(torch.load(saved_model_path))
 
-        best_map, patience_counter = 0.0, 0
+        best_map, patience_counter, best_score = 0.0, 0, -np.inf
         for epoch in tqdm_notebook(range(1, num_epochs + 1), desc='Epoch', leave=False):
 
-            for phase in ['validation', 'train']:
+            for phase in ['train', 'validation']:
 
                 if phase == 'train':
                     model.train()
@@ -189,7 +189,6 @@ def train_cross_validation(model_cls, dataset, dropout=0.0, lr=1e-3,
                 epoch_nll_loss = running_nll_loss / dataloader.__len__()
                 epoch_reg_loss = running_reg_loss / dataloader.dataset.__len__()
 
-
                 # TensorBoard Summary
                 writer.add_scalars('nll_loss',
                                    {'{}_nll_loss'.format(phase): epoch_nll_loss},
@@ -222,8 +221,12 @@ def train_cross_validation(model_cls, dataset, dropout=0.0, lr=1e-3,
                                                                                      epoch_nll_loss)
                     if accuracy > best_map:
                         best_map = accuracy
-                        patience_counter = 0
                         model_save_path = model_save_path + '-best'
+
+                    score = -epoch_nll_loss
+                    if score > best_score:
+                        patience_counter = 0
+                        best_score = score
                     else:
                         patience_counter += 1
 
