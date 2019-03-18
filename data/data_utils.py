@@ -505,15 +505,16 @@ def normalize_adj(adj):
     :param adj: Adjacency matrix with shape [num_nodes, num_nodes]
     :return:
     """
+    mean = adj.mean()
     for i in range(adj.shape[0]):
-        adj[i][i] = 0
+        adj[i][i] = mean
     s1, s2 = adj.shape
-    adj = adj.view(-1)
-    adj = torch.tensor(norm.ppf(rankdata(adj) / (len(adj) + 1))).view(s1, s2)
+    adj = torch.tensor(norm.ppf(rankdata(adj.view(-1)) / (len(adj.view(-1)) + 1))).view(s1, s2)
     for i in range(adj.shape[0]):
         for j in range(i, adj.shape[1]):
             if i != j:
                 adj[j][i] = adj[i][j]
+        adj[i][i] = 0
     return adj.float()
 
 
@@ -526,7 +527,7 @@ def adj_to_edge_attr(data):
 def _set_edge_attr_for_data(data):
     data.adj = 1 - torch.sqrt((1 - data.adj) / 2)  # to distance
     data.adj = torch.atan(data.adj)  # fisher z-transform
-    data.adj = normalize_adj(data.adj)
+    # data.adj = normalize_adj(data.adj)
     data.edge_attr = adj_to_edge_attr(data)
     # data.edge_attr = doubly_stochastic_normlization(data)
     # data.adj = edge_to_adj(data.edge_index, data.edge_attr, data.num_nodes)

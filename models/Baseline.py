@@ -8,17 +8,18 @@ class Baseline(torch.nn.Module):
 
     def __init__(self,
                  data,
+                 writer,
                  dropout=0
                  ):
         super(Baseline, self).__init__()
         self.num_features = data.num_features
         self.B = data.y.shape[0]
         self.num_nodes = int(data.num_nodes / self.B)
-        # self.emb1 = nn.Linear(11, 2)
+        self.emb1 = nn.Linear(11, 4)
         # self.bn1 = nn.BatchNorm1d(16)
-        self.fc1 = nn.Linear(11 * self.num_nodes, 2)
-        # self.drop1 = nn.Dropout(dropout)
-        # self.fc2 = nn.Linear(6, 2)
+        self.fc1 = nn.Linear(4 * self.num_nodes, 32)
+        self.drop1 = nn.Dropout(dropout)
+        self.fc2 = nn.Linear(32, 2)
         # self.drop2 = nn.Dropout(dropout)
         # self.fc3 = nn.Linear(8, 2)
 
@@ -28,13 +29,13 @@ class Baseline(torch.nn.Module):
                 x.squeeze(0), edge_index.squeeze(0), edge_attr.squeeze(0), y.squeeze(0)
 
         B = y.shape[0]
-        # x = self.emb1(x).view(B, -1)
-        x = x.view(B, -1)
+        x = self.emb1(x).view(B, -1)
+        # x = x.view(B, -1)
         # x = global_add_pool(x, batch=torch.tensor([i for _ in range(self.num_nodes) for i in range(self.B)],
         #                                           device=x.device))
-        # x = F.relu(self.drop1(self.fc1(x)))
+        x = F.relu(self.drop1(self.fc1(x)))
         # x = F.relu(self.drop2(self.fc2(x)))
-        x = self.fc1(x)
+        x = self.fc2(x)
 
         reg = torch.tensor([0], dtype=torch.float, device=x.device)
         return x, reg

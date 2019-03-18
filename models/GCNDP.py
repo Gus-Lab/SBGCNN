@@ -9,54 +9,83 @@ import torch
 from torch.nn import Parameter
 from torch_scatter import scatter_add
 from torch_geometric.nn.conv import MessagePassing
-from torch_geometric.utils import add_self_loops
+from torch_geometric.nn import GCNConv
+from torch_geometric.utils import add_self_loops, remove_self_loops
 
 from torch_geometric.nn.inits import glorot, zeros
 
+from utils import add_self_loops_with_edge_attr
 
-class GCNConv(torch.nn.Module):
-    """
-    designed for multi-channel graph in DGCNN_SortPool
-    """
 
-    def __init__(self, in_channels, num_nodes):
-        super(GCNConv, self).__init__()
+class SGCN(torch.nn.Module):
+    def __init__(self, data, writer, dropout=0):
+        super(SGCN, self).__init__()
+        self.writer = writer
+        self.num_features = data.num_features
+        self.edge_attr_dim = data.edge_attr.shape[-1]
+        self.B = data.y.shape[0]
+        self.num_nodes = int(data.num_nodes / self.B)
 
-        self.gcnconv1 = UWGCNConv(in_channels, 7)
-        self.gcnconv2 = UWGCNConv(7, 7)
-        # self.gcnconv3 = GCNConv(7, 7)
-        self.diffpool1 = DIFFPool(num_nodes, 64)
-        # self.diffpool2 = DIFFPool(64, 32)
-        # self.diffpool3 = DIFFPool(32, 1)
-        # self.diffpool4 = DIFFPool(4, 1)
+        self.gcnconv1 = GCNConv(data.num_features, 4)
+        # self.bn1 = nn.BatchNorm1d(4)
 
-    def forward(self, x, edge_index, edge_attr, adj):
-        """
-        :param x: Node feature matrix with shape [num_nodes, num_node_features]
-        :param edge_index: Graph connectivity in COO format with shape [2, num_edges] and type torch.long
-        :param edge_attr: Edge feature matrix with shape [num_edges, 1]
-        :param adj: Adjacency matrix with shape [num_nodes, num_nodes]
-        :return:
-        """
+        self.fc1 = nn.Linear(self.num_nodes * 4, 32)
+        self.drop1 = nn.Dropout(dropout)
+        self.drop2 = nn.Dropout(dropout)
+        self.fc2 = nn.Linear(32, 2)
+
+    def forward(self, x, edge_index, edge_attr, y, adj):
+        if x.dim() == 3:
+            x, edge_index, edge_attr, y = \
+                x.squeeze(0), edge_index.squeeze(0), edge_attr.squeeze(0), y.squeeze(0)
+
+        if adj.dim() == 3:
+            adj = adj.squeeze(0)
+
         x = self.gcnconv1(x, edge_index, edge_attr)
-        x = self.gcnconv2(x, edge_index, edge_attr)
-        # x = self.gcnconv3(x, edge_index, edge_attr)
-        # x = torch.cat([x, self.gcnconv3(x[:, -1:], edge_index, edge_attr)], dim=-1)
-        # Differentiable Pooling
-        # x, edge_index, edge_attr, adj, reg1 = self.diffpool1(x, adj)
-        # x, edge_index, edge_attr, adj, reg2 = self.diffpool2(x, adj)
-        # x, edge_index, edge_attr, adj, reg3 = self.diffpool3(x, adj)
-        # x, edge_index, edge_attr, adj, reg4 = self.diffpool4(x, adj)
+        self.writer.add_histogram('conv1_x_std', x.std(dim=0))
+        # x = self.bn1(x)
+        x = x.view(self.B, -1)
+        x = self.drop2(F.relu(self.fc1(self.drop1(x))))
+        x = self.fc2(x)
 
-        # reg = reg1 + reg2
-        reg = torch.tensor([0.0], device=x.device)
+        reg = torch.tensor([0], dtype=torch.float, device=x.device)
         return x, reg
+
+# class GCNConv(torch.nn.Module):
+#     """
+#     designed for multi-channel graph in DGCNN_SortPool
+#     """
+#
+#     def __init__(self, in_channels, num_nodes):
+#         super(GCNConv, self).__init__()
+#
+#         self.gcnconv1 = UWGCNConv(in_channels, 7)
+#         self.gcnconv2 = UWGCNConv(7, 7)
+#         # self.gcnconv3 = GCNConv(7, 7)
+#         self.diffpool1 = DIFFPool(num_nodes, 64)
+#         # self.diffpool2 = DIFFPool(64, 32)
+#         # self.diffpool3 = DIFFPool(32, 1)
+#         # self.diffpool4 = DIFFPool(4, 1)
+#
+#     def forward(self, x, edge_index, edge_attr, adj):
+#         """
+#         :param x: Node feature matrix with shape [num_nodes, num_node_features]
+#         :param edge_index: Graph connectivity in COO format with shape [2, num_edges] and type torch.long
+#         :param edge_attr: Edge feature matrix with shape [num_edges, 1]
+#         :param adj: Adjacency matrix with shape [num_nodes, num_nodes]
+#         :return:
+#         """
+#         x = self.gcnconv1(x, edge_index, edge_attr)
+#         x = self.gcnconv2(x, edge_index, edge_attr)
+#         return x
 
 
 class GCNDP(torch.nn.Module):
 
     def __init__(self,
                  data,
+                 writer,
                  dropout=0
                  ):
         super(GCNDP, self).__init__()
@@ -64,6 +93,7 @@ class GCNDP(torch.nn.Module):
         self.num_features = data.num_features
         self.num_nodes = data.num_nodes
         self.channels = data.edge_attr.shape[-1]
+        self.B = data.y.shape[0]
 
         # multi-dimensional edge_attr is implemented as separate channels and concatenated before dense layer.
         self.gcnconvdiffpool_channel1 = GCNConv(self.num_features, num_nodes=self.num_nodes)
@@ -187,6 +217,7 @@ class WGCNConv(MessagePassing):
         return '{}({}, {})'.format(self.__class__.__name__, self.in_channels,
                                    self.out_channels)
 
+
 class UWGCNConv(MessagePassing):
     r"""The graph convolutional operator from the `"Semi-supervised
     Classfication with Graph Convolutional Networks"
@@ -232,28 +263,25 @@ class UWGCNConv(MessagePassing):
 
     def forward(self, x, edge_index, edge_weight=None):
         """"""
-        if edge_weight is None:
-            edge_weight = torch.ones(
-                (edge_index.size(1),), dtype=x.dtype, device=x.device)
-        edge_weight = edge_weight.view(-1)
-        assert edge_weight.size(0) == edge_index.size(1)
+        # if edge_weight is None:
+        #     edge_weight = torch.ones(
+        #         (edge_index.size(1),), dtype=x.dtype, device=x.device)
+        # edge_weight = edge_weight.view(-1)
+        # assert edge_weight.size(0) == edge_index.size(1)
 
-        edge_index = add_self_loops(edge_index, num_nodes=x.size(0))
-        loop_weight = torch.full(
-            (x.size(0),),
-            1 if not self.improved else 2,
-            dtype=x.dtype,
-            device=x.device)
-        edge_weight = torch.cat([edge_weight, loop_weight], dim=0)
+        # Add self-loops to adjacency matrix.
+        edge_index, edge_weight = remove_self_loops(edge_index, edge_weight)
+        edge_index, edge_weight = add_self_loops_with_edge_attr(edge_index, edge_weight, num_nodes=x.size(0))
 
         row, col = edge_index
         deg = scatter_add(edge_weight, row, dim=0, dim_size=x.size(0))
         deg_inv = deg.pow(-0.5)
-        deg_inv[deg_inv == float('inf')] = 0
+        deg_inv[deg_inv == float('nan')] = 0
 
         norm = deg_inv[row] * edge_weight * deg_inv[col]
 
         # x = torch.matmul(x, self.weight)
+        # print(norm)
         return self.propagate('add', edge_index, x=x, norm=norm)
 
     def message(self, x_j, norm):

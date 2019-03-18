@@ -1,7 +1,7 @@
 from .DGCNN import DGCNN
 from .Baseline import Baseline
 from .EGAT import MEGAT, EGAT
-from .GCNDP import GCNDP
+from .GCNDP import GCNDP, SGCN
 
 
 __all__ = [
@@ -10,4 +10,5 @@ __all__ = [
     'MEGAT',
     'GCNDP',
     'EGAT',
+    'SGCN',
 ]

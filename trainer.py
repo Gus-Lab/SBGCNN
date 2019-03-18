@@ -240,7 +240,7 @@ def train_cross_validation(model_cls, dataset, dropout=0.0, lr=1e-3,
 
                     if patience_counter >= patience:
                         print("Stopped at epoch {}".format(epoch))
-                        return
+                        return 
 
     print("Done !")
 
