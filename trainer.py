@@ -26,10 +26,11 @@ def train_cross_validation(model_cls, dataset, dropout=0.0, lr=1e-3,
                            comment='', tb_service_loc=None, batch_size=1,
                            num_workers=0, pin_memory=False, cuda_device=None,
                            ddp_port='23456', fold_no=None, saved_model_path=None,
-                           device_ids=None):
+                           device_ids=None, patience=20):
     """
     TODO: multi-gpu support
-    :param device_ids:
+    :param patience: for early stopping
+    :param device_ids: for ddp
     :param saved_model_path:
     :param fold_no:
     :param ddp_port:
@@ -52,7 +53,7 @@ def train_cross_validation(model_cls, dataset, dropout=0.0, lr=1e-3,
     :return:
     """
     saved_args = locals()
-    seed = int(time.time())
+    seed = int(time.time() % 1 * 1e5)
     saved_args['random_seed'] = seed
 
     if distribute and not torch.distributed.is_initialized():  # initialize ddp
@@ -126,7 +127,7 @@ def train_cross_validation(model_cls, dataset, dropout=0.0, lr=1e-3,
         if saved_model_path is not None:
             model.load_state_dict(torch.load(saved_model_path))
 
-        best_map = 0.0
+        best_map, patience_counter = 0.0, 0
         for epoch in tqdm_notebook(range(1, num_epochs + 1), desc='Epoch', leave=False):
 
             for phase in ['validation', 'train']:
@@ -188,6 +189,8 @@ def train_cross_validation(model_cls, dataset, dropout=0.0, lr=1e-3,
                 epoch_nll_loss = running_nll_loss / dataloader.__len__()
                 epoch_reg_loss = running_reg_loss / dataloader.dataset.__len__()
 
+
+                # TensorBoard Summary
                 writer.add_scalars('nll_loss',
                                    {'{}_nll_loss'.format(phase): epoch_nll_loss},
                                    epoch)
@@ -213,12 +216,16 @@ def train_cross_validation(model_cls, dataset, dropout=0.0, lr=1e-3,
                                      epoch_yhat_1,
                                      epoch)
 
+                # Save Model & Early Stopping
                 if phase == 'validation':
                     model_save_path = model_save_dir + '-{}-{}-{:.3f}-{:.3f}'.format(model_name, epoch, accuracy,
                                                                                      epoch_nll_loss)
                     if accuracy > best_map:
                         best_map = accuracy
+                        patience_counter = 0
                         model_save_path = model_save_path + '-best'
+                    else:
+                        patience_counter += 1
 
                     for th, pfix in zip([0.8, 0.75, 0.7, 0.5, 0.0], ['-perfect', '-great', '-good', '-bad', '-miss']):
                         if accuracy >= th:
@@ -226,6 +233,10 @@ def train_cross_validation(model_cls, dataset, dropout=0.0, lr=1e-3,
                             break
 
                     torch.save(model.state_dict(), model_save_path)
+
+                    if patience_counter >= patience:
+                        print("Stopped at epoch {}".format(epoch))
+                        return
 
     print("Done !")
 
