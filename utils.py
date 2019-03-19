@@ -1,4 +1,5 @@
 import torch
+from scipy.sparse import coo_matrix
 from torch_geometric.data import Data
 import networkx as nx
 import os.path as osp
@@ -56,14 +57,10 @@ def adj_to_edge_index(adj):
     Args:
         adj: <class Tensor> Adjacency matrix with shape [num_nodes, num_nodes]
     """
-    G = nx.from_numpy_array(np.ones_like(adj.detach().cpu().numpy()))
-    A = nx.to_scipy_sparse_matrix(G)
+    A = coo_matrix(np.ones_like(adj))
     A = A.tocoo()
     edge_index = torch.tensor(np.stack([A.row, A.col]), dtype=torch.long)
-    edge_attr = torch.tensor(np.ones((len(A.row), 1)))
-
-    for i, (u, v) in enumerate(edge_index.t()):
-        edge_attr[i] = adj[u][v]
+    edge_attr = adj.view(-1, 1)
 
     return edge_index.to(adj.device), edge_attr.to(adj.device)
 

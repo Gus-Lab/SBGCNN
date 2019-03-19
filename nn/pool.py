@@ -39,7 +39,7 @@ class DIFFPool(torch.nn.Module):
         super(DIFFPool, self).__init__()
 
 
-    def forward(self, x, adj, s):
+    def forward(self, x, adj, s, short_cut=False):
         """
         Returns pooled node feature matrix, coarsened adjacency matrix and the
         auxiliary link prediction objective
@@ -49,7 +49,10 @@ class DIFFPool(torch.nn.Module):
         out_x, out_adj, reg = dense_diff_pool(x, adj, s)
         out_adj = out_adj.squeeze(0) if out_adj.dim() == 3 else out_adj
         out_x = out_x.squeeze(0) if out_x.dim() == 3 else out_x
-        out_edge_index, out_edge_attr = adj_to_edge_index(out_adj)
+        if not short_cut:
+            out_edge_index, out_edge_attr = adj_to_edge_index(out_adj)
+        else:
+            out_edge_index, out_edge_attr = None, None
 
         return out_x, out_edge_index, out_edge_attr, out_adj, reg
 
