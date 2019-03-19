@@ -57,12 +57,13 @@ def adj_to_edge_index(adj):
     Args:
         adj: <class Tensor> Adjacency matrix with shape [num_nodes, num_nodes]
     """
-    A = coo_matrix(np.ones_like(adj))
-    A = A.tocoo()
-    edge_index = torch.tensor(np.stack([A.row, A.col]), dtype=torch.long)
+    device = adj.device
+    A = coo_matrix(torch.ones(adj.shape[0], adj.shape[1]))
+    # A = A.tocoo()
+    edge_index = torch.tensor(np.stack([A.row, A.col]), dtype=torch.long, device=device)
     edge_attr = adj.view(-1, 1)
 
-    return edge_index.to(adj.device), edge_attr.to(adj.device)
+    return edge_index, edge_attr
 
 
 def doubly_stochastic_normlization_d(edge_index, edge_attr, num_nodes):

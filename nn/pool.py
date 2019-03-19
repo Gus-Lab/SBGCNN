@@ -50,7 +50,7 @@ class DIFFPool(torch.nn.Module):
         out_adj = out_adj.squeeze(0) if out_adj.dim() == 3 else out_adj
         out_x = out_x.squeeze(0) if out_x.dim() == 3 else out_x
         if not short_cut:
-            out_edge_index, out_edge_attr = adj_to_edge_index(out_adj)
+            out_edge_index, out_edge_attr = adj_to_edge_index(out_adj.detach())
         else:
             out_edge_index, out_edge_attr = None, None
 
