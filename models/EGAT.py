@@ -52,17 +52,17 @@ class _EGATConv(torch.nn.Module):
         s, _, _ = self.pconv1(x, edge_index, edge_attr)
         x, edge_index, edge_attr, adj, reg1 = self.pool1(x, adj, s)
         self.writer.add_histogram('pool1_x_std', x.std(dim=0))
-        print("pool1_x", x[:, 0])
+        # print("pool1_x", x[:, 0])
 
         s, _, _ = self.pconv2(x, edge_index, edge_attr)
         x, edge_index, edge_attr, adj, reg2 = self.pool2(x, adj, s)
         self.writer.add_histogram('pool2_x_std', x.std(dim=0))
         # x = self.bn2(x)
-        print("pool2_x", x[:, 0])
+        # print("pool2_x", x[:, 0])
 
         s, _, _ = self.pconv3(x, edge_index, edge_attr)
         x, edge_index, edge_attr, adj, reg3 = self.pool3(x, adj, s)
-        print("pool3_x", x)
+        # print("pool3_x", x)
 
         # reg = torch.tensor([0], dtype=torch.float, device=x.device)
         reg = reg1 + reg2 + reg3
