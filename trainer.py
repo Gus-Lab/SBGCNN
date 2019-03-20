@@ -231,6 +231,9 @@ def train_cross_validation(model_cls, dataset, dropout=0.0, lr=1e-3,
                     else:
                         patience_counter += 1
 
+                    # skip 10 epoch
+                    # best_score = best_score if epoch > 10 else -np.inf
+
                     for th, pfix in zip([0.8, 0.75, 0.7, 0.5, 0.0], ['-perfect', '-great', '-good', '-bad', '-miss']):
                         if accuracy >= th:
                             model_save_path += pfix
@@ -240,7 +243,7 @@ def train_cross_validation(model_cls, dataset, dropout=0.0, lr=1e-3,
 
                     if patience_counter >= patience:
                         print("Stopped at epoch {}".format(epoch))
-                        return 
+                        return
 
     print("Done !")
 

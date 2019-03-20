@@ -166,7 +166,7 @@ class EGATConv(torch.nn.Module):
         uniform(size, self.att_weight)
         uniform(size, self.bias)
 
-    def forward(self, x, edge_index, edge_attr=None):
+    def forward(self, x, edge_index, edge_attr=None, save=False):
         x = x.unsqueeze(-1) if x.dim() == 1 else x
         x = torch.mm(x, self.weight)
         x = x.view(-1, self.heads, self.out_channels)
@@ -182,6 +182,10 @@ class EGATConv(torch.nn.Module):
         alpha = F.leaky_relu(alpha, self.negative_slope)
         # This will broadcast edge_attr across all attentions
         alpha = torch.mul(alpha, edge_attr.float())
+
+        if save:
+            torch.save(alpha.detach().cpu(), "alpha.pkl")
+            torch.save(edge_index.detach().cpu(), "edge_index.pkl")
 
         # Sample attention coefficients stochastically.
         alpha = self.drop(alpha)
