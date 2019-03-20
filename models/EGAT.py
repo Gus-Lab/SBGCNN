@@ -1,5 +1,6 @@
 import torch
 import torch.nn.functional as F
+from boxx import timeit
 from torch import nn
 from torch_geometric.nn import global_add_pool
 from nn import DIFFPool
@@ -24,23 +25,23 @@ class _EGATConv(torch.nn.Module):
         self.num_nodes = num_nodes
         self.B = batch_size
 
-        self.conv1 = EGATConv(in_channels, 8, heads=5, dropout=dropout, concat=True)
+        self.conv1 = EGATConv(in_channels, 6, heads=5, dropout=dropout, concat=True)
         # self.bn1 = nn.BatchNorm1d(40)
 
         # self.conv2 = EGATConv(40, 40, heads=1, dropout=dropout, concat=False)
 
-        self.pconv1 = EGATConv(40, 32)
+        self.pconv1 = EGATConv(30, 32)
         self.pool1 = DIFFPool()
 
-        self.pconv2 = EGATConv(40, 8)
+        self.pconv2 = EGATConv(30, 4)
         self.pool2 = DIFFPool()
         # self.bn2 = nn.BatchNorm1d(40)
 
-        self.pconv3 = EGATConv(40, 1)
-        self.pool3 = DIFFPool()
+        # self.pconv3 = EGATConv(30, 1)
+        # self.pool3 = DIFFPool()
 
     def forward(self, x, edge_index, edge_attr, adj):
-        x, edge_index, e = self.conv1(x, edge_index, edge_attr)
+        x, edge_index, e = self.conv1(x, edge_index, edge_attr, save=True)
         e = self.dot(e).unsqueeze(-1)
         self.writer.add_histogram('conv1_x_std', x.std(dim=0))
         # x = self.bn1(x)
@@ -60,12 +61,12 @@ class _EGATConv(torch.nn.Module):
         # x = self.bn2(x)
         # print("pool2_x", x[:, 0])
 
-        s, _, _ = self.pconv3(x, edge_index, edge_attr)
-        x, edge_index, edge_attr, adj, reg3 = self.pool3(x, adj, s)
-        # print("pool3_x", x)
+        # s, _, _ = self.pconv3(x, edge_index, edge_attr)
+        # x, _, _, adj, reg3 = self.pool3(x, adj, s)
+        # # print("pool3_x", x)
 
         # reg = torch.tensor([0], dtype=torch.float, device=x.device)
-        reg = reg1 + reg2 + reg3
+        reg = reg1 * 10 + reg2 * 0.1
         return x, reg
 
     @staticmethod
@@ -88,8 +89,9 @@ class EGAT(torch.nn.Module):
 
         self.egatconv_channel1 = _EGATConv(self.num_features, 4, dropout, self.num_nodes, self.B, self.writer)
 
-        self.fc1 = nn.Linear(40 * 1, 32)
         self.drop1 = nn.Dropout(dropout)
+        self.fc1 = nn.Linear(30 * 4, 32)
+        self.drop2 = nn.Dropout(dropout)
         self.fc2 = nn.Linear(32, 2)
 
     def forward(self, x, edge_index, edge_attr, y, adj):
@@ -102,7 +104,7 @@ class EGAT(torch.nn.Module):
 
         x, reg = self.egatconv_channel1(x, edge_index, edge_attr, adj)
         x = x.view(self.B, -1)
-        x = self.drop1(F.relu(self.fc1(x)))
+        x = self.drop2(F.relu(self.fc1(self.drop1(x))))
         # x = self.drop2(F.relu(self.fc2(x)))
         x = self.fc2(x)
 
