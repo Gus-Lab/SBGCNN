@@ -66,6 +66,7 @@ def train_cross_validation(model_cls, dataset, dropout=0.0, lr=1e-3,
     else:
         device = cuda_device
     device_count = torch.cuda.device_count() if multi_gpus else 1
+    device_count = len(device_ids) if device_ids is not None else device_count
     if device_count > 1:
         print("Let's use", device_count, "GPUs!")
 
