@@ -15,7 +15,6 @@ from data.data_utils import concat_extra_node_feature, \
     normalize_node_feature_subject_wise, \
     normalize_node_feature_sample_wise_transform, \
     phrase_subject_list, \
-    th_edge_attr, \
     set_edge_attr
 
 

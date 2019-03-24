@@ -60,7 +60,7 @@ def adj_to_edge_index(adj):
     device = adj.device
     A = coo_matrix(adj)
     edge_index = torch.tensor(np.stack([A.row, A.col]), dtype=torch.long, device=device)
-    edge_attr = torch.tensor(A.data, device=device)
+    edge_attr = torch.tensor(A.data, device=device).unsqueeze(-1)
 
     return edge_index, edge_attr
 
