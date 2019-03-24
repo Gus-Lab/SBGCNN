@@ -225,43 +225,20 @@ def resample_mm_N_choose_n(time_series):
     return list(itertools.product(rest_blocks, ip_blocks, unknown_rest_blocks))
 
 
-def remove_least_k_percent(adj, k=0.1, fill_value=1e-10):
+def _remove_least_k_percent(adj, k=0.1, fill_value=0):
+    """
+
+    :param adj: Adjacency matrix with shape [num_nodes, num_nodes]
+    :param k:
+    :param fill_value:
+    :return:
+    """
     sorted_index = np.argsort(adj, axis=None)
     index_to_remove = sorted_index[:int(len(sorted_index) * k)]
     num_nodes = len(adj)
     for index in index_to_remove:
         adj[int(index / num_nodes)][index % num_nodes] = fill_value
     return adj
-
-
-def _th_edge_attr(th, data):
-    """
-    set a threshold for edges
-    :param th: threshold
-    :param data:
-    :return:
-    """
-    adj = data.adj
-    adj[adj.abs() < th] = 0
-    for i, (u, v) in enumerate(data.edge_index.t()):
-        data.edge_attr[i] = adj[u][v]
-    return data
-
-
-def th_edge_attr(data_list, th=0.5):
-    """
-
-    :param th: threshold
-    :param data_list:
-    :return:
-    """
-    pool = Pool()
-    func = partial(_th_edge_attr, th)
-    new_data_list = pool.map(func, data_list)
-    pool.close()
-    pool.join()
-    return new_data_list
-
 
 def _zt_edge_attr(data):
     """
@@ -526,6 +503,8 @@ def adj_to_edge_attr(data):
 
 def _set_edge_attr_for_data(data):
     data.adj = 1 - torch.sqrt((1 - data.adj) / 2)  # to distance
+    # for GraphSAGE
+    data.adj = _remove_least_k_percent(data.adj, k=0.6, fill_value=0)
     data.adj = torch.atan(data.adj)  # fisher z-transform
     # data.adj = normalize_adj(data.adj)
     data.edge_attr = adj_to_edge_attr(data)
