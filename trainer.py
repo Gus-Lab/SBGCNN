@@ -26,9 +26,10 @@ def train_cross_validation(model_cls, dataset, dropout=0.0, lr=1e-3,
                            comment='', tb_service_loc=None, batch_size=1,
                            num_workers=0, pin_memory=False, cuda_device=None,
                            ddp_port='23456', fold_no=None, saved_model_path=None,
-                           device_ids=None, patience=20):
+                           device_ids=None, patience=20, seed=None):
     """
     TODO: multi-gpu support
+    :param seed:
     :param patience: for early stopping
     :param device_ids: for ddp
     :param saved_model_path:
@@ -53,7 +54,7 @@ def train_cross_validation(model_cls, dataset, dropout=0.0, lr=1e-3,
     :return:
     """
     saved_args = locals()
-    seed = int(time.time() % 1 * 1e5)
+    seed = int(time.time() % 1e4 * 1e5) if seed is None else seed
     saved_args['random_seed'] = seed
 
     if distribute and not torch.distributed.is_initialized():  # initialize ddp
