@@ -8,7 +8,7 @@ from nn import DIFFPool
 from nn import MEGATConv, EGATConv
 
 
-class _EGATConv(torch.nn.Module):
+class _SEGATConv(torch.nn.Module):
     def __init__(self,
                  in_channels,
                  out_channels,
@@ -17,7 +17,7 @@ class _EGATConv(torch.nn.Module):
                  batch_size,
                  writer
                  ):
-        super(_EGATConv, self).__init__()
+        super(_SEGATConv, self).__init__()
         self.writer = writer
         self.in_channels = in_channels
         self.out_channels = out_channels
@@ -25,7 +25,9 @@ class _EGATConv(torch.nn.Module):
         self.num_nodes = num_nodes
         self.B = batch_size
 
-        self.conv1 = EGATConv(in_channels, 6, heads=5, dropout=dropout, concat=True)
+        # self.in_channels = 4  # single modularity
+
+        self.conv1 = EGATConv(self.in_channels, 6, heads=5, dropout=dropout, concat=True)
 
         self.pconv1 = EGATConv(30, 32)
         self.pool1 = DIFFPool()
@@ -35,6 +37,10 @@ class _EGATConv(torch.nn.Module):
 
 
     def forward(self, x, edge_index, edge_attr, adj):
+
+        # x = x[:, -4:]
+        x[:, :7] = torch.ones_like(x[:, :7])  # single modularity
+
         x, edge_index, e = self.conv1(x, edge_index, edge_attr, save=True)
         e = self.dot(e).unsqueeze(-1)
         self.writer.add_histogram('conv1_x_std', x.std(dim=0))
@@ -60,16 +66,16 @@ class _EGATConv(torch.nn.Module):
         return new_e
 
 
-class EGAT(torch.nn.Module):
+class SEGAT(torch.nn.Module):
     def __init__(self, data, writer, dropout=0):
-        super(EGAT, self).__init__()
+        super(SEGAT, self).__init__()
         self.writer = writer
         self.num_features = data.num_features
         self.edge_attr_dim = data.edge_attr.shape[-1]
         self.B = data.y.shape[0]
         self.num_nodes = int(data.num_nodes / self.B)
 
-        self.egatconv_channel1 = _EGATConv(self.num_features, 4, dropout, self.num_nodes, self.B, self.writer)
+        self.egatconv_channel1 = _SEGATConv(self.num_features, 4, dropout, self.num_nodes, self.B, self.writer)
 
         self.drop1 = nn.Dropout(dropout)
         self.fc1 = nn.Linear(30 * 4, 32)
