@@ -66,7 +66,7 @@ def adj_to_edge_index(adj):
 
 
 def doubly_stochastic_normlization_d(edge_index, edge_attr, num_nodes):
-    adj = edge_to_adj(edge_index, edge_attr, num_nodes)
+    adj = adj_to_edge_index(edge_index, edge_attr, num_nodes)
 
     tilde_adj = adj / adj.sum(dim=1)
 
