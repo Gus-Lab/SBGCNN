@@ -184,8 +184,15 @@ class EGATConv(torch.nn.Module):
         alpha = torch.mul(alpha, edge_attr.float())
 
         if save:
-            torch.save(alpha.detach().cpu(), "alpha.pkl")
-            torch.save(edge_index.detach().cpu(), "edge_index.pkl")
+            try:
+                alpha_list = torch.load("alpha.pkl")
+                edge_index_list = torch.load("edge_index.pkl")
+            except Exception as e:
+                alpha_list, edge_index_list = [], []
+            alpha_list.append(alpha.detach().cpu())
+            edge_index_list.append(edge_index.detach().cpu())
+            torch.save(alpha_list, "alpha.pkl")
+            torch.save(edge_index_list, "edge_index.pkl")
 
         # Sample attention coefficients stochastically.
         alpha = self.drop(alpha)

@@ -35,7 +35,7 @@ class _EGATConv(torch.nn.Module):
 
 
     def forward(self, x, edge_index, edge_attr, adj):
-        x, edge_index, e = self.conv1(x, edge_index, edge_attr, save=True)
+        x, edge_index, e = self.conv1(x, edge_index, edge_attr, save=False)
         e = self.dot(e).unsqueeze(-1)
         self.writer.add_histogram('conv1_x_std', x.std(dim=0))
 
