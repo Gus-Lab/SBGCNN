@@ -180,6 +180,15 @@ class EGATConv(torch.nn.Module):
         alpha = torch.cat([x[row], x[col]], dim=-1)
         alpha = (alpha * self.att_weight).sum(dim=-1)
         alpha = F.leaky_relu(alpha, self.negative_slope)
+
+        if save:
+            try:
+                plain_alpha_list = torch.load("plain_alpha.pkl")
+            except Exception as e:
+                plain_alpha_list = []
+            plain_alpha_list.append(alpha.detach().cpu())
+            torch.save(plain_alpha_list, "plain_alpha.pkl")
+
         # This will broadcast edge_attr across all attentions
         alpha = torch.mul(alpha, edge_attr.float())
 

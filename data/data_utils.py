@@ -503,10 +503,12 @@ def adj_to_edge_attr(data):
 
 def _set_edge_attr_for_data(data):
     data.adj = 1 - torch.sqrt((1 - data.adj) / 2)  # to distance
-    # for GraphSAGE
-    data.adj = _remove_least_k_percent(data.adj, k=0.8, fill_value=0)
-    data.adj = torch.atan(data.adj)  # fisher z-transform
-    # data.adj = normalize_adj(data.adj)
+    # # for GraphSAGE
+    # # data.adj = _remove_least_k_percent(data.adj, k=0.8, fill_value=0)
+    # data.adj = torch.atan(data.adj)  # fisher z-transform
+    # # data.adj = normalize_adj(data.adj)
+    # data.adj = data.adj.abs()
+    # data.adj = torch.log((1+data.adj)/(1-data.adj+1e-2))/2
     data.edge_attr = adj_to_edge_attr(data)
     # data.edge_attr = doubly_stochastic_normlization(data)
     # data.adj = edge_to_adj(data.edge_index, data.edge_attr, data.num_nodes)

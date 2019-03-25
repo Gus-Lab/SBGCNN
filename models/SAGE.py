@@ -31,7 +31,7 @@ class SAGE(torch.nn.Module):
         self.drop2 = nn.Dropout(dropout)
         self.fc2 = nn.Linear(32, 2)
 
-    def forward(self, x, edge_index, edge_attr, adj):
+    def forward(self, x, edge_index, edge_attr, y, adj):
         if x.dim() == 3:
             x, edge_index, edge_attr, y = \
                 x.squeeze(0), edge_index.squeeze(0), edge_attr.squeeze(0), y.squeeze(0)

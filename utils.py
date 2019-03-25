@@ -58,7 +58,7 @@ def adj_to_edge_index(adj):
         adj: <class Tensor> Adjacency matrix with shape [num_nodes, num_nodes]
     """
     device = adj.device
-    A = coo_matrix(adj)
+    A = coo_matrix(adj.cpu())
     edge_index = torch.tensor(np.stack([A.row, A.col]), dtype=torch.long, device=device)
     edge_attr = torch.tensor(A.data, device=device).unsqueeze(-1)
 
