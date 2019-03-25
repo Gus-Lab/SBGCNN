@@ -4,6 +4,7 @@ from .EGAT import EGAT
 from .GCNDP import GCNDP, SGCN
 from .GCN import GCN
 from .SEGAT import SEGAT
+from .SAGE import SAGE
 
 
 __all__ = [
@@ -16,4 +17,5 @@ __all__ = [
     'SGCN',
     'GCN',
     'SEGAT',
+    'SAGE',
 ]

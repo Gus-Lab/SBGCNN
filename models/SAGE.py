@@ -44,3 +44,16 @@ class SAGE(torch.nn.Module):
 
         s = self.pconv1(x, edge_index)
         x, edge_index, edge_attr, adj, reg1 = self.pool1(x, adj, s)
+        self.writer.add_histogram('pool1_x_std', x.std(dim=0))
+
+        s = self.pconv2(x, edge_index)
+        x, edge_index, edge_attr, adj, reg2 = self.pool2(x, adj, s)
+        self.writer.add_histogram('pool2_x_std', x.std(dim=0))
+
+        x = x.view(self.B, -1)
+        x = self.drop2(F.relu(self.fc1(self.drop1(x))))
+        x = self.fc2(x)
+
+        # reg = torch.tensor([0], dtype=torch.float, device=x.device)
+        reg = reg1 * 10 + reg2 * 0.1
+        return x, reg
