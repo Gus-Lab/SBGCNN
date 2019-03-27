@@ -178,7 +178,17 @@ class EGATConv(torch.nn.Module):
 
         # Compute attention coefficients.
         alpha = torch.cat([x[row], x[col]], dim=-1)
-        alpha = (alpha * self.att_weight).sum(dim=-1)
+        alpha = alpha * self.att_weight
+
+        if save:
+            try:
+                s_alpha_list = torch.load("s_alpha.pkl")
+            except Exception as e:
+                s_alpha_list = []
+            s_alpha_list.append(alpha.detach().cpu())
+            torch.save(s_alpha_list, "s_alpha.pkl")
+
+        alpha = alpha.sum(dim=-1)
         alpha = F.leaky_relu(alpha, self.negative_slope)
 
         if save:
