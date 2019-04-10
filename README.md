@@ -1,4 +1,2 @@
 # SBGCNN
 SOME BUGGY GRAPH CLASSIFICATION NEURAL NETWORK
-
-/me fixing and repairing
